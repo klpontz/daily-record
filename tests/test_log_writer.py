@@ -103,3 +103,10 @@ def test_write_log_reruns_are_safe(tmp_path):
     content = log_path.read_text()
     assert "- second pull" in content
     assert "- first pull" not in content
+
+
+def test_overwrite_section_is_idempotent_with_same_content():
+    result1 = overwrite_section(SAMPLE_LOG, "Slack", "- stable content")
+    result2 = overwrite_section(result1, "Slack", "- stable content")
+    assert result1 == result2
+    assert result2.count("### Slack") == 1

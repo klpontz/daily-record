@@ -16,12 +16,11 @@ def overwrite_section(text: str, section_name: str, new_content: str) -> str:
     '### ' header or end of file. If section not found, appends it.
     """
     pattern = rf'(### {re.escape(section_name)}\n)(.*?)(?=\n### |\Z)'
-    replacement = f'### {section_name}\n{new_content}\n'
-    result = re.sub(pattern, replacement, text, flags=re.DOTALL)
-    if result == text:
-        # Section not found — append it
-        return text.rstrip('\n') + f'\n\n### {section_name}\n{new_content}\n'
-    return result
+    if re.search(pattern, text, flags=re.DOTALL):
+        replacement = f'### {section_name}\n{new_content}\n'
+        return re.sub(pattern, replacement, text, flags=re.DOTALL)
+    # Section not found — append it
+    return text.rstrip('\n') + f'\n\n### {section_name}\n{new_content}\n'
 
 
 def write_log(log_path: Path, template_path: str, sections: dict) -> None:
