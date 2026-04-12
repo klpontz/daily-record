@@ -7,6 +7,7 @@ import subprocess
 import sys
 from datetime import date
 from pathlib import Path
+from urllib.parse import quote
 
 from dotenv import load_dotenv
 
@@ -150,9 +151,9 @@ def _open_in_obsidian(vault_path: str, log_path: Path) -> None:
         return
     try:
         relative = log_path.relative_to(vault_path)
-        url = f"obsidian://open?path={relative}"
+        url = f"obsidian://open?path={quote(str(relative))}"
         subprocess.run(["open", url], check=False)
-    except (ValueError, Exception):
+    except Exception:
         pass  # Not in vault or open failed — non-fatal
 
 

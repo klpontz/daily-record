@@ -39,11 +39,12 @@ def test_both_sources_fail_writes_nothing(tmp_path):
     with patch("pull_daily.fetch_today_slack", side_effect=Exception("Slack down")):
         with patch("pull_daily.fetch_today_asana", side_effect=Exception("Asana down")):
             import pull_daily
-            result = pull_daily.run(config, dry_run=True)
+            # dry_run=False: proves the early return (not dry_run suppression) prevents writes
+            result = pull_daily.run(config, dry_run=False)
 
     assert result["slack_ok"] is False
     assert result["asana_ok"] is False
-    # No log file should be written when both fail
+    # No log file should be written when both fail — early return fires before write_log
     log_files = list(log_dir.iterdir())
     assert len(log_files) == 0
 
