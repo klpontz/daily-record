@@ -39,6 +39,7 @@ def test_summarize_includes_prompt_and_data_in_call(tmp_path):
     message_content = call_kwargs["messages"][0]["content"]
     assert "My prompt text" in message_content
     assert "my raw data" in message_content
+    assert "---" in message_content
 
 
 def test_summarize_uses_haiku_model(tmp_path):

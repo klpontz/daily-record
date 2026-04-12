@@ -12,13 +12,16 @@ def summarize(api_key: str, prompt_path: str, data: str) -> str:
         api_key: Anthropic API key
         prompt_path: Path to the prompt markdown file
         data: Raw data string to summarize
+
+    Returns:
+        Summarized text from Claude's response
     """
     prompt = Path(prompt_path).read_text()
     client = anthropic.Anthropic(api_key=api_key)
 
     message = client.messages.create(
         model="claude-haiku-4-5-20251001",
-        max_tokens=1024,
+        max_tokens=1024,  # sufficient for daily summary output
         messages=[
             {
                 "role": "user",
