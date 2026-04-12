@@ -14,13 +14,14 @@ def _fetch_completed_tasks(pat: str, workspace_gid: str, today: str) -> list:
         "workspace": workspace_gid,
         "assignee": "me",
         "completed_since": f"{today}T00:00:00.000Z",
-        "opt_fields": "name,completed,completed_at,gid",
+        "opt_fields": "name,completed,completed_at,gid,parent",
         "limit": 100,
     }
     resp = requests.get(f"{ASANA_BASE}/tasks", headers=_headers(pat), params=params)
     resp.raise_for_status()
     tasks = resp.json().get("data", [])
-    return [t for t in tasks if t.get("completed")]
+    # Exclude subtasks (parent is not None) — they're too granular for the daily log
+    return [t for t in tasks if t.get("completed") and t.get("parent") is None]
 
 
 def _get_my_gid(pat: str) -> str:
@@ -31,7 +32,12 @@ def _get_my_gid(pat: str) -> str:
 
 
 def _fetch_my_comments(pat: str, workspace_gid: str, today: str) -> list:
-    """Fetch comments I made today on tasks modified today in my workspace."""
+    """Fetch comments I made today on tasks assigned to me and modified today.
+
+    Known limitation: comments on tasks assigned to others are not captured —
+    the Asana API has no endpoint to fetch all comments by a user across a workspace.
+    N+1 calls (one /stories per task) are unavoidable; Asana has no bulk stories endpoint.
+    """
     user_gid = _get_my_gid(pat)
 
     # Fetch tasks assigned to me that were modified today (bounded set for story fetching)
