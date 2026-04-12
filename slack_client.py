@@ -5,8 +5,9 @@ from slack_sdk.errors import SlackApiError
 
 def _today_oldest_ts() -> str:
     """Unix timestamp string for midnight today (UTC)."""
-    today_midnight = datetime.combine(date.today(), datetime.min.time())
-    return str(today_midnight.replace(tzinfo=timezone.utc).timestamp())
+    today_utc = datetime.now(timezone.utc).date()
+    today_midnight = datetime.combine(today_utc, datetime.min.time(), tzinfo=timezone.utc)
+    return str(today_midnight.timestamp())
 
 
 def _fetch_channel_messages(client: WebClient, channel_id: str, user_id: str, oldest: str) -> list:
@@ -24,7 +25,8 @@ def _fetch_channel_messages(client: WebClient, channel_id: str, user_id: str, ol
                     )
                     replies = thread.get("messages", [])
                     if any(r.get("user") == user_id for r in replies):
-                        thread_texts = [r.get("text", "") for r in replies]
+                        # Skip replies[0] — it's the parent message, already in item["text"]
+                        thread_texts = [r.get("text", "") for r in replies[1:]]
                         results.append({"channel_id": channel_id, "text": msg.get("text", ""), "thread": thread_texts})
                 except SlackApiError:
                     pass
@@ -92,7 +94,7 @@ def format_for_prompt(data: dict) -> str:
                     lines.append(f"  > {reply}")
 
     if data["dms"]:
-        lines.append("\n## Direct Messages")
+        lines.append("## Direct Messages")
         for dm in data["dms"]:
             for msg in dm["messages"]:
                 lines.append(f"[DM] {msg}")
