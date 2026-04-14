@@ -113,11 +113,36 @@ def test_comments_filters_to_user_and_today():
 def test_format_for_prompt_includes_task_names():
     data = {
         "completed_tasks": [{"name": "Finished the thing", "gid": "T1"}],
-        "comments": [{"task": "Some task", "comment": "left a note"}]
+        "comments": [{"task": "Some task", "project": None, "comment": "left a note"}]
     }
     result = format_for_prompt(data)
     assert "Finished the thing" in result
     assert "left a note" in result
+
+
+def test_format_for_prompt_includes_project_name():
+    data = {
+        "completed_tasks": [
+            {"name": "Contract Renewal 26/27", "gid": "T1",
+             "memberships": [{"project": {"name": "San Ysidro"}}]}
+        ],
+        "comments": [
+            {"task": "Some task", "project": "San Ysidro", "comment": "left a note"}
+        ]
+    }
+    result = format_for_prompt(data)
+    assert "San Ysidro" in result
+    assert result.count("San Ysidro") == 2
+
+
+def test_format_for_prompt_handles_task_with_no_project():
+    data = {
+        "completed_tasks": [{"name": "Orphan task", "gid": "T1", "memberships": []}],
+        "comments": []
+    }
+    result = format_for_prompt(data)
+    assert "Orphan task" in result
+    assert "project:" not in result
 
 
 def test_format_for_prompt_empty_returns_no_activity():

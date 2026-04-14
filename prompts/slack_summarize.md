@@ -11,11 +11,11 @@ Your job:
 - Use plain, factual language — no interpretation or coaching
 
 Format:
-- [channel or DM context] summary of what happened
+- **channel or DM context**: summary of what happened (lowercase, period at end, no brackets, no links)
 
 Example output:
-- [#product] Gave feedback on student lock feature prototype — flagged three-state model as blocking issue
-- [DM: Sarah] Confirmed timeline for Gateway account split
-- [#eng] Asked about deploy window for help article updates
+- **#product**: gave feedback on student lock feature prototype — flagged three-state model as blocking issue.
+- **DM: Sarah**: confirmed timeline for Gateway account split.
+- **#eng**: asked about deploy window for help article updates.
 
 If there is no meaningful activity, output exactly: _No notable Slack activity today_

@@ -8,13 +8,21 @@ def _headers(pat: str) -> dict:
     return {"Authorization": f"Bearer {pat}"}
 
 
+def _project_name(task: dict) -> str | None:
+    """Return the first project name a task belongs to, or None."""
+    memberships = task.get("memberships") or []
+    if memberships:
+        return memberships[0].get("project", {}).get("name")
+    return None
+
+
 def _fetch_completed_tasks(pat: str, workspace_gid: str, today: str) -> list:
     """Fetch tasks assigned to me and completed today."""
     params = {
         "workspace": workspace_gid,
         "assignee": "me",
         "completed_since": f"{today}T00:00:00.000Z",
-        "opt_fields": "name,completed,completed_at,gid,parent",
+        "opt_fields": "name,completed,completed_at,gid,parent,memberships.project.name",
         "limit": 100,
     }
     resp = requests.get(f"{ASANA_BASE}/tasks", headers=_headers(pat), params=params)
@@ -45,7 +53,7 @@ def _fetch_my_comments(pat: str, workspace_gid: str, today: str) -> list:
         "workspace": workspace_gid,
         "assignee": "me",
         "modified_since": f"{today}T00:00:00.000Z",
-        "opt_fields": "name,gid",
+        "opt_fields": "name,gid,memberships.project.name",
         "limit": 50,
     }
     resp = requests.get(f"{ASANA_BASE}/tasks", headers=_headers(pat), params=params)
@@ -67,7 +75,11 @@ def _fetch_my_comments(pat: str, workspace_gid: str, today: str) -> list:
                 and story.get("created_by", {}).get("gid") == user_gid
                 and story.get("created_at", "").startswith(today)
             ):
-                comments.append({"task": task["name"], "comment": story.get("text", "")})
+                comments.append({
+                    "task": task["name"],
+                    "project": _project_name(task),
+                    "comment": story.get("text", ""),
+                })
 
     return comments
 
@@ -98,11 +110,15 @@ def format_for_prompt(data: dict) -> str:
     if data["completed_tasks"]:
         lines.append("## Completed Tasks")
         for task in data["completed_tasks"]:
-            lines.append(f"- {task['name']}")
+            project = _project_name(task)
+            suffix = f" (project: {project})" if project else ""
+            lines.append(f"- {task['name']}{suffix}")
 
     if data["comments"]:
         lines.append("## Comments Made")
         for item in data["comments"]:
-            lines.append(f"- [{item['task']}] {item['comment']}")
+            project = item.get("project")
+            suffix = f" (project: {project})" if project else ""
+            lines.append(f"- [{item['task']}]{suffix} {item['comment']}")
 
     return "\n".join(lines)

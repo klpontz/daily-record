@@ -11,11 +11,11 @@ Your job:
 - Missing an item is acceptable — the goal is signal, not completeness
 
 Format:
-- [project name] task or activity description
+- **Project name**: action description (lowercase action, period at end, no brackets, no links)
 
 Example output:
-- [Help Articles] Published Student Kiosk Feature help article
-- [Feature QA] Completed QA pass on family lock prototype — filed 3 issues
-- [Gateway] Left comment on school split request with recommended approach
+- **Help articles**: published Student Kiosk Feature help article.
+- **Feature QA**: completed QA pass on family lock prototype — filed 3 issues.
+- **Gateway**: left comment on school split request with recommended approach.
 
 If there is no meaningful activity, output exactly: _No notable Asana activity today_

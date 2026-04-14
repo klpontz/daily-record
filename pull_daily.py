@@ -42,6 +42,7 @@ def load_config() -> dict:
         "slack_bot_token": os.environ["SLACK_BOT_TOKEN"],
         "slack_user_id": os.environ["SLACK_USER_ID"],
         "slack_channels": [c.strip() for c in os.environ["SLACK_CHANNELS"].split(",")],
+        "slack_channel_names": _parse_channel_names(os.environ.get("SLACK_CHANNEL_NAMES", "")),
         "asana_pat": os.environ["ASANA_PAT"],
         "asana_workspace_gid": os.environ["ASANA_WORKSPACE_GID"],
         "log_dir": os.environ["LOG_DIR"],
@@ -50,11 +51,26 @@ def load_config() -> dict:
     }
 
 
+def _parse_channel_names(raw: str) -> dict:
+    """Parse SLACK_CHANNEL_NAMES env var into a dict.
+
+    Format: comma-separated id:name pairs, e.g.
+        C6BDPLG8N:general,C065854RB8A:announcements
+    """
+    mapping = {}
+    for pair in raw.split(","):
+        pair = pair.strip()
+        if ":" in pair:
+            channel_id, name = pair.split(":", 1)
+            mapping[channel_id.strip()] = name.strip()
+    return mapping
+
+
 def _prompts_dir() -> Path:
     return Path(__file__).parent / "prompts"
 
 
-def run(config: dict, dry_run: bool = False) -> dict:
+def run(config: dict, dry_run: bool = False, debug: bool = False) -> dict:
     """Fetch, summarize, and write the daily log.
 
     Returns a result dict with keys: slack_ok, asana_ok, slack_count, asana_count.
@@ -74,9 +90,10 @@ def run(config: dict, dry_run: bool = False) -> dict:
             config["slack_bot_token"],
             config["slack_user_id"],
             config["slack_channels"],
+            debug=debug,
         )
         slack_count = len(slack_data["channels"]) + len(slack_data["dms"])
-        raw = slack_format(slack_data)
+        raw = slack_format(slack_data, config.get("slack_channel_names"))
         try:
             slack_content = summarize(
                 config["anthropic_api_key"],
@@ -160,10 +177,11 @@ def _open_in_obsidian(vault_path: str, log_path: Path) -> None:
 def main():
     parser = argparse.ArgumentParser(description="Pull today's Slack and Asana into the daily log.")
     parser.add_argument("--dry-run", action="store_true", help="Print output without writing to log")
+    parser.add_argument("--debug", action="store_true", help="Print Slack fetch diagnostics")
     args = parser.parse_args()
 
     config = load_config()
-    run(config, dry_run=args.dry_run)
+    run(config, dry_run=args.dry_run, debug=args.debug)
 
 
 if __name__ == "__main__":
