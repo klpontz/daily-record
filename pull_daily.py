@@ -85,6 +85,9 @@ def run(config: dict, dry_run: bool = False, debug: bool = False) -> dict:
     # --- Slack ---
     # None = API unreachable (section skipped entirely)
     # "_Summarization failed..." = fetched but Claude failed (marker written to section)
+    if debug:
+        print(f"[debug] channel name mapping: {config.get('slack_channel_names')}")
+
     try:
         slack_data = fetch_today_slack(
             config["slack_bot_token"],
