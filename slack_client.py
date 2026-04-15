@@ -10,19 +10,44 @@ def _today_oldest_ts() -> str:
     return str(today_midnight.timestamp())
 
 
+def _lookback_oldest_ts(days: int = 14) -> str:
+    """Unix timestamp string for midnight N days ago (local time).
+
+    Used to fetch older messages so we can detect threads that started before
+    today but received replies today.
+    """
+    from datetime import timedelta
+    today_local = datetime.now().date()
+    lookback = datetime.combine(today_local - timedelta(days=days), datetime.min.time())
+    return str(lookback.timestamp())
+
+
 def _fetch_channel_messages(client: WebClient, channel_id: str, user_id: str, oldest: str) -> list:
-    """Fetch messages from a channel where user sent or participated in a thread."""
+    """Fetch messages from a channel where user sent or participated in a thread.
+
+    Uses a wider lookback window so that threads started before today but
+    active today are not missed. Filters by today's oldest timestamp to
+    determine whether a top-level message or thread reply qualifies.
+    """
     results = []
+    lookback = _lookback_oldest_ts()
     try:
-        response = client.conversations_history(channel=channel_id, oldest=oldest, limit=200)
+        response = client.conversations_history(channel=channel_id, oldest=lookback, limit=200)
         for msg in response.get("messages", []):
-            if msg.get("user") == user_id:
-                # User's top-level message — also fetch their follow-up replies in the thread
+            msg_ts = msg.get("ts", "0")
+            latest_reply = msg.get("latest_reply", msg_ts)
+            has_thread_activity_today = (
+                msg.get("reply_count", 0) > 0 and float(latest_reply) >= float(oldest)
+            )
+            msg_is_today = float(msg_ts) >= float(oldest)
+
+            if msg.get("user") == user_id and msg_is_today:
+                # User's top-level message posted today — also fetch their follow-up replies
                 thread_texts = None
                 if msg.get("reply_count", 0) > 0:
                     try:
                         thread = client.conversations_replies(
-                            channel=channel_id, ts=msg["ts"], oldest=oldest, limit=100
+                            channel=channel_id, ts=msg_ts, oldest=oldest, limit=100
                         )
                         # replies[0] is the parent, already captured in msg["text"]
                         user_replies = [
@@ -34,19 +59,26 @@ def _fetch_channel_messages(client: WebClient, channel_id: str, user_id: str, ol
                     except SlackApiError:
                         pass
                 results.append({"channel_id": channel_id, "text": msg.get("text", ""), "thread": thread_texts})
-            elif msg.get("reply_count", 0) > 0:
-                # Thread started by someone else — include if user replied
+            elif has_thread_activity_today:
+                # Thread with replies today — include if user sent or replied in the thread
                 try:
                     thread = client.conversations_replies(
-                        channel=channel_id, ts=msg["ts"], oldest=oldest, limit=100
+                        channel=channel_id, ts=msg_ts, oldest=oldest, limit=100
                     )
-                    # replies[0] is the parent message, already in item["text"]
+                    all_replies = thread.get("messages", [])
+                    parent = all_replies[0] if all_replies else msg
+                    # replies[0] is the parent message
                     user_replies = [
-                        r.get("text", "") for r in thread.get("messages", [])[1:]
+                        r.get("text", "") for r in all_replies[1:]
                         if r.get("user") == user_id
                     ]
-                    if user_replies:
-                        results.append({"channel_id": channel_id, "text": msg.get("text", ""), "thread": user_replies})
+                    user_started = msg.get("user") == user_id
+                    if user_replies or user_started:
+                        results.append({
+                            "channel_id": channel_id,
+                            "text": parent.get("text", msg.get("text", "")),
+                            "thread": user_replies or None,
+                        })
                 except SlackApiError:
                     pass
     except SlackApiError as e:
