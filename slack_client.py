@@ -58,7 +58,7 @@ def _fetch_channel_messages(client: WebClient, channel_id: str, user_id: str, ol
                             thread_texts = user_replies
                     except SlackApiError:
                         pass
-                results.append({"channel_id": channel_id, "text": msg.get("text", ""), "thread": thread_texts})
+                results.append({"channel_id": channel_id, "text": msg.get("text", ""), "thread": thread_texts, "is_mine": True})
             elif has_thread_activity_today:
                 # Thread with replies today — include if user sent or replied in the thread
                 try:
@@ -78,6 +78,7 @@ def _fetch_channel_messages(client: WebClient, channel_id: str, user_id: str, ol
                             "channel_id": channel_id,
                             "text": parent.get("text", msg.get("text", "")),
                             "thread": user_replies or None,
+                            "is_mine": user_started,
                         })
                 except SlackApiError:
                     pass
@@ -198,10 +199,12 @@ def format_for_prompt(data: dict, channel_names: dict | None = None) -> str:
         lines.append("## Channel Messages")
         for item in data["channels"]:
             label = _channel_label(item["channel_id"])
-            lines.append(f"[{label}] {item['text']}")
+            is_mine = item.get("is_mine", True)
+            prefix = "YOU" if is_mine else "CONTEXT"
+            lines.append(f"[{label}] {prefix}: {item['text']}")
             if item.get("thread"):
                 for reply in item["thread"]:
-                    lines.append(f"  > {reply}")
+                    lines.append(f"  > YOU: {reply}")
 
     if data["dms"]:
         lines.append("## Direct Messages")

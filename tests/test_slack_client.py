@@ -28,7 +28,9 @@ def test_fetch_returns_channels_and_dms_keys():
 
 
 def test_user_messages_included():
-    with patch("slack_client.WebClient") as mock_wc_class:
+    with patch("slack_client.WebClient") as mock_wc_class, \
+         patch("slack_client._today_oldest_ts", return_value="0"), \
+         patch("slack_client._lookback_oldest_ts", return_value="0"):
         mock_client = MagicMock()
         mock_wc_class.return_value = mock_client
         mock_client.conversations_history.return_value = {
@@ -42,6 +44,7 @@ def test_user_messages_included():
 
     assert len(result["channels"]) == 1
     assert result["channels"][0]["text"] == "hello"
+    assert result["channels"][0]["is_mine"] is True
 
 
 def test_other_users_messages_excluded():
@@ -61,7 +64,9 @@ def test_other_users_messages_excluded():
 
 
 def test_thread_started_by_other_includes_only_user_replies():
-    with patch("slack_client.WebClient") as mock_wc_class:
+    with patch("slack_client.WebClient") as mock_wc_class, \
+         patch("slack_client._today_oldest_ts", return_value="0"), \
+         patch("slack_client._lookback_oldest_ts", return_value="0"):
         mock_client = MagicMock()
         mock_wc_class.return_value = mock_client
         # Parent message from someone else, user and another person replied
@@ -83,10 +88,13 @@ def test_thread_started_by_other_includes_only_user_replies():
 
     assert len(result["channels"]) == 1
     assert result["channels"][0]["thread"] == ["my reply"]
+    assert result["channels"][0]["is_mine"] is False
 
 
 def test_user_top_level_message_captures_their_thread_replies():
-    with patch("slack_client.WebClient") as mock_wc_class:
+    with patch("slack_client.WebClient") as mock_wc_class, \
+         patch("slack_client._today_oldest_ts", return_value="0"), \
+         patch("slack_client._lookback_oldest_ts", return_value="0"):
         mock_client = MagicMock()
         mock_wc_class.return_value = mock_client
         mock_client.conversations_history.return_value = {
@@ -108,10 +116,13 @@ def test_user_top_level_message_captures_their_thread_replies():
     assert len(result["channels"]) == 1
     assert result["channels"][0]["text"] == "original post"
     assert result["channels"][0]["thread"] == ["my follow-up"]
+    assert result["channels"][0]["is_mine"] is True
 
 
 def test_user_top_level_message_with_no_own_replies_has_null_thread():
-    with patch("slack_client.WebClient") as mock_wc_class:
+    with patch("slack_client.WebClient") as mock_wc_class, \
+         patch("slack_client._today_oldest_ts", return_value="0"), \
+         patch("slack_client._lookback_oldest_ts", return_value="0"):
         mock_client = MagicMock()
         mock_wc_class.return_value = mock_client
         mock_client.conversations_history.return_value = {
@@ -131,6 +142,7 @@ def test_user_top_level_message_with_no_own_replies_has_null_thread():
 
     assert len(result["channels"]) == 1
     assert result["channels"][0]["thread"] is None
+    assert result["channels"][0]["is_mine"] is True
 
 
 def test_format_for_prompt_produces_string():
