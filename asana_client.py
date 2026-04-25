@@ -40,23 +40,20 @@ def _get_my_gid(pat: str) -> str:
 
 
 def _fetch_my_comments(pat: str, workspace_gid: str, today: str) -> list:
-    """Fetch comments I made today on tasks assigned to me and modified today.
+    """Fetch comments I made today on any task modified today across the workspace.
 
-    Known limitation: comments on tasks assigned to others are not captured —
-    the Asana API has no endpoint to fetch all comments by a user across a workspace.
+    No assignee filter so comments on tasks assigned to others are captured.
     N+1 calls (one /stories per task) are unavoidable; Asana has no bulk stories endpoint.
     """
     user_gid = _get_my_gid(pat)
 
-    # Fetch tasks assigned to me that were modified today (bounded set for story fetching)
+    # Use workspace search to find tasks modified today (no assignee restriction)
     params = {
-        "workspace": workspace_gid,
-        "assignee": "me",
-        "modified_since": f"{today}T00:00:00.000Z",
+        "modified_on.after": today,
         "opt_fields": "name,gid,memberships.project.name",
-        "limit": 50,
+        "limit": 100,
     }
-    resp = requests.get(f"{ASANA_BASE}/tasks", headers=_headers(pat), params=params)
+    resp = requests.get(f"{ASANA_BASE}/workspaces/{workspace_gid}/tasks/search", headers=_headers(pat), params=params)
     resp.raise_for_status()
     tasks = resp.json().get("data", [])
 
