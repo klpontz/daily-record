@@ -67,9 +67,11 @@ def _fetch_my_comments(pat: str, workspace_gid: str, today: str) -> list:
         if stories_resp.status_code != 200:
             continue
         for story in stories_resp.json().get("data", []):
+            if not story:
+                continue
             if (
                 story.get("type") == "comment"
-                and story.get("created_by", {}).get("gid") == user_gid
+                and (story.get("created_by") or {}).get("gid") == user_gid
                 and story.get("created_at", "").startswith(today)
             ):
                 comments.append({
