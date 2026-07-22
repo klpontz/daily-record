@@ -47,6 +47,16 @@ def _lookback_oldest_ts(days: int = 14) -> str:
     return str(lookback.timestamp())
 
 
+def _fetch_thread(client, channel_id, ts, oldest):
+    """Full thread as ordered [{user_id, text}], parent first.
+    conversations_replies returns oldest-first."""
+    try:
+        thread = client.conversations_replies(channel=channel_id, ts=ts, oldest=oldest, limit=100)
+        return [{"user_id": m.get("user", ""), "text": m.get("text", "")} for m in thread.get("messages", [])]
+    except SlackApiError:
+        return []
+
+
 def _fetch_channel_messages(client: WebClient, channel_id: str, user_id: str, oldest: str) -> list:
     """Fetch messages from a channel where user sent or participated in a thread.
 
@@ -61,55 +71,26 @@ def _fetch_channel_messages(client: WebClient, channel_id: str, user_id: str, ol
         for msg in response.get("messages", []):
             msg_ts = msg.get("ts", "0")
             latest_reply = msg.get("latest_reply", msg_ts)
-            has_thread_activity_today = (
-                msg.get("reply_count", 0) > 0 and float(latest_reply) >= float(oldest)
-            )
+            has_thread_activity_today = msg.get("reply_count", 0) > 0 and float(latest_reply) >= float(oldest)
             msg_is_today = float(msg_ts) >= float(oldest)
+            user_started = msg.get("user") == user_id
 
-            if msg.get("user") == user_id and msg_is_today:
-                # User's top-level message posted today — also fetch their follow-up replies
-                thread_texts = None
-                if msg.get("reply_count", 0) > 0:
-                    try:
-                        thread = client.conversations_replies(
-                            channel=channel_id, ts=msg_ts, oldest=oldest, limit=100
-                        )
-                        # replies[0] is the parent, already captured in msg["text"]
-                        user_replies = [
-                            r.get("text", "") for r in thread.get("messages", [])[1:]
-                            if r.get("user") == user_id
-                        ]
-                        if user_replies:
-                            thread_texts = user_replies
-                    except SlackApiError:
-                        pass
-                results.append({"channel_id": channel_id, "text": msg.get("text", ""), "thread": thread_texts, "is_mine": True})
+            if user_started and msg_is_today:
+                thread = _fetch_thread(client, channel_id, msg_ts, oldest) if msg.get("reply_count", 0) > 0 else []
+                parent = thread[0] if thread else {"user_id": msg.get("user", ""), "text": msg.get("text", "")}
+                replies = thread[1:] if thread else []
+                results.append({"channel_id": channel_id, "parent": parent, "replies": replies, "is_mine": True})
             elif has_thread_activity_today:
-                # Thread with replies today — include if user sent or replied in the thread
-                try:
-                    thread = client.conversations_replies(
-                        channel=channel_id, ts=msg_ts, oldest=oldest, limit=100
-                    )
-                    all_replies = thread.get("messages", [])
-                    parent = all_replies[0] if all_replies else msg
-                    # replies[0] is the parent message
-                    user_replies = [
-                        r.get("text", "") for r in all_replies[1:]
-                        if r.get("user") == user_id
-                    ]
-                    user_started = msg.get("user") == user_id
-                    if user_replies or user_started:
-                        results.append({
-                            "channel_id": channel_id,
-                            "text": parent.get("text", msg.get("text", "")),
-                            "thread": user_replies or None,
-                            "is_mine": user_started,
-                        })
-                except SlackApiError:
-                    pass
+                thread = _fetch_thread(client, channel_id, msg_ts, oldest)
+                if not thread:
+                    continue
+                parent, replies = thread[0], thread[1:]
+                if user_started or any(r["user_id"] == user_id for r in replies):
+                    results.append({"channel_id": channel_id, "parent": parent, "replies": replies, "is_mine": user_started})
     except SlackApiError as e:
         print(f"⚠ Slack API error fetching channel {channel_id}: {e}")
-    return results
+    # conversations_history is newest-first; present threads oldest-first
+    return list(reversed(results))
 
 
 def _fetch_dm_messages(client: WebClient, user_id: str, oldest: str) -> list:
@@ -119,15 +100,11 @@ def _fetch_dm_messages(client: WebClient, user_id: str, oldest: str) -> list:
         dms = client.conversations_list(types="im", limit=50).get("channels", [])
         for dm in dms:
             try:
-                history = client.conversations_history(
-                    channel=dm["id"], oldest=oldest, limit=100
-                )
-                user_msgs = [
-                    m.get("text", "") for m in history.get("messages", [])
-                    if m.get("user") == user_id
-                ]
-                if user_msgs:
-                    results.append({"channel_id": dm["id"], "messages": user_msgs})
+                history = client.conversations_history(channel=dm["id"], oldest=oldest, limit=100)
+                ordered = list(reversed(history.get("messages", [])))  # newest-first -> chronological
+                if any(m.get("user") == user_id for m in ordered):
+                    messages = [{"user_id": m.get("user", ""), "text": m.get("text", "")} for m in ordered]
+                    results.append({"channel_id": dm["id"], "partner_id": dm.get("user", ""), "messages": messages})
             except SlackApiError as e:
                 if e.response.get("error") == "missing_scope":
                     needed = e.response.get("needed", "unknown scope")
@@ -144,8 +121,8 @@ def fetch_today_slack(token: str, user_id: str, channel_ids: list, debug: bool =
 
     Returns:
         {
-            "channels": [{"channel_id": str, "text": str, "thread": list|None}, ...],
-            "dms": [{"channel_id": str, "messages": [str, ...]}, ...]
+            "channels": [{"channel_id": str, "parent": {"user_id": str, "text": str}, "replies": [{"user_id": str, "text": str}, ...], "is_mine": bool}, ...],
+            "dms": [{"channel_id": str, "partner_id": str, "messages": [{"user_id": str, "text": str}, ...]}, ...]
         }
     """
     client = build_web_client(token)

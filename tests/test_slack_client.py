@@ -15,9 +15,9 @@ def test_today_oldest_ts_returns_local_midnight():
 
 
 def test_fetch_returns_channels_and_dms_keys():
-    with patch("slack_client.WebClient") as mock_wc_class:
+    with patch("slack_client.build_web_client") as mock_build:
         mock_client = MagicMock()
-        mock_wc_class.return_value = mock_client
+        mock_build.return_value = mock_client
         mock_client.conversations_history.return_value = {"messages": []}
         mock_client.conversations_list.return_value = {"channels": []}
 
@@ -27,80 +27,15 @@ def test_fetch_returns_channels_and_dms_keys():
     assert "dms" in result
 
 
-def test_user_messages_included():
-    with patch("slack_client.WebClient") as mock_wc_class, \
+def test_user_top_level_message_captures_full_thread_attributed():
+    with patch("slack_client.WebClient"), \
+         patch("slack_client.build_web_client") as mock_build, \
          patch("slack_client._today_oldest_ts", return_value="0"), \
          patch("slack_client._lookback_oldest_ts", return_value="0"):
         mock_client = MagicMock()
-        mock_wc_class.return_value = mock_client
+        mock_build.return_value = mock_client
         mock_client.conversations_history.return_value = {
-            "messages": [
-                {"user": "U123", "text": "hello", "ts": "1000.0", "reply_count": 0}
-            ]
-        }
-        mock_client.conversations_list.return_value = {"channels": []}
-
-        result = fetch_today_slack("token", "U123", ["C001"])
-
-    assert len(result["channels"]) == 1
-    assert result["channels"][0]["text"] == "hello"
-    assert result["channels"][0]["is_mine"] is True
-
-
-def test_other_users_messages_excluded():
-    with patch("slack_client.WebClient") as mock_wc_class:
-        mock_client = MagicMock()
-        mock_wc_class.return_value = mock_client
-        mock_client.conversations_history.return_value = {
-            "messages": [
-                {"user": "U999", "text": "someone else", "ts": "1000.0", "reply_count": 0}
-            ]
-        }
-        mock_client.conversations_list.return_value = {"channels": []}
-
-        result = fetch_today_slack("token", "U123", ["C001"])
-
-    assert len(result["channels"]) == 0
-
-
-def test_thread_started_by_other_includes_only_user_replies():
-    with patch("slack_client.WebClient") as mock_wc_class, \
-         patch("slack_client._today_oldest_ts", return_value="0"), \
-         patch("slack_client._lookback_oldest_ts", return_value="0"):
-        mock_client = MagicMock()
-        mock_wc_class.return_value = mock_client
-        # Parent message from someone else, user and another person replied
-        mock_client.conversations_history.return_value = {
-            "messages": [
-                {"user": "U999", "text": "parent", "ts": "1000.0", "reply_count": 3}
-            ]
-        }
-        mock_client.conversations_replies.return_value = {
-            "messages": [
-                {"user": "U999", "text": "parent", "ts": "1000.0"},
-                {"user": "U123", "text": "my reply", "ts": "1001.0"},
-                {"user": "U888", "text": "their reply", "ts": "1002.0"},
-            ]
-        }
-        mock_client.conversations_list.return_value = {"channels": []}
-
-        result = fetch_today_slack("token", "U123", ["C001"])
-
-    assert len(result["channels"]) == 1
-    assert result["channels"][0]["thread"] == ["my reply"]
-    assert result["channels"][0]["is_mine"] is False
-
-
-def test_user_top_level_message_captures_their_thread_replies():
-    with patch("slack_client.WebClient") as mock_wc_class, \
-         patch("slack_client._today_oldest_ts", return_value="0"), \
-         patch("slack_client._lookback_oldest_ts", return_value="0"):
-        mock_client = MagicMock()
-        mock_wc_class.return_value = mock_client
-        mock_client.conversations_history.return_value = {
-            "messages": [
-                {"user": "U123", "text": "original post", "ts": "1000.0", "reply_count": 2}
-            ]
+            "messages": [{"user": "U123", "text": "original post", "ts": "1000.0", "reply_count": 2}]
         }
         mock_client.conversations_replies.return_value = {
             "messages": [
@@ -110,39 +45,110 @@ def test_user_top_level_message_captures_their_thread_replies():
             ]
         }
         mock_client.conversations_list.return_value = {"channels": []}
-
         result = fetch_today_slack("token", "U123", ["C001"])
 
-    assert len(result["channels"]) == 1
-    assert result["channels"][0]["text"] == "original post"
-    assert result["channels"][0]["thread"] == ["my follow-up"]
-    assert result["channels"][0]["is_mine"] is True
+    ch = result["channels"][0]
+    assert ch["parent"] == {"user_id": "U123", "text": "original post"}
+    assert ch["replies"] == [
+        {"user_id": "U999", "text": "their response"},
+        {"user_id": "U123", "text": "my follow-up"},
+    ]
+    assert ch["is_mine"] is True
 
 
-def test_user_top_level_message_with_no_own_replies_has_null_thread():
-    with patch("slack_client.WebClient") as mock_wc_class, \
+def test_thread_started_by_other_captures_everyone_when_user_replied():
+    with patch("slack_client.build_web_client") as mock_build, \
          patch("slack_client._today_oldest_ts", return_value="0"), \
          patch("slack_client._lookback_oldest_ts", return_value="0"):
         mock_client = MagicMock()
-        mock_wc_class.return_value = mock_client
+        mock_build.return_value = mock_client
         mock_client.conversations_history.return_value = {
-            "messages": [
-                {"user": "U123", "text": "original post", "ts": "1000.0", "reply_count": 1}
-            ]
+            "messages": [{"user": "U999", "text": "parent", "ts": "1000.0", "reply_count": 3, "latest_reply": "1002.0"}]
         }
         mock_client.conversations_replies.return_value = {
             "messages": [
-                {"user": "U123", "text": "original post", "ts": "1000.0"},
-                {"user": "U999", "text": "their response", "ts": "1001.0"},
+                {"user": "U999", "text": "parent", "ts": "1000.0"},
+                {"user": "U123", "text": "my reply", "ts": "1001.0"},
+                {"user": "U888", "text": "their reply", "ts": "1002.0"},
             ]
         }
         mock_client.conversations_list.return_value = {"channels": []}
-
         result = fetch_today_slack("token", "U123", ["C001"])
 
-    assert len(result["channels"]) == 1
-    assert result["channels"][0]["thread"] is None
-    assert result["channels"][0]["is_mine"] is True
+    ch = result["channels"][0]
+    assert ch["parent"] == {"user_id": "U999", "text": "parent"}
+    assert ch["replies"] == [
+        {"user_id": "U123", "text": "my reply"},
+        {"user_id": "U888", "text": "their reply"},
+    ]
+    assert ch["is_mine"] is False
+
+
+def test_thread_where_user_never_participated_is_excluded():
+    with patch("slack_client.build_web_client") as mock_build, \
+         patch("slack_client._today_oldest_ts", return_value="0"), \
+         patch("slack_client._lookback_oldest_ts", return_value="0"):
+        mock_client = MagicMock()
+        mock_build.return_value = mock_client
+        mock_client.conversations_history.return_value = {
+            "messages": [{"user": "U999", "text": "parent", "ts": "1000.0", "reply_count": 1, "latest_reply": "1001.0"}]
+        }
+        mock_client.conversations_replies.return_value = {
+            "messages": [
+                {"user": "U999", "text": "parent", "ts": "1000.0"},
+                {"user": "U888", "text": "a reply", "ts": "1001.0"},
+            ]
+        }
+        mock_client.conversations_list.return_value = {"channels": []}
+        result = fetch_today_slack("token", "U123", ["C001"])
+    assert result["channels"] == []
+
+
+def test_other_users_standalone_message_excluded():
+    with patch("slack_client.build_web_client") as mock_build:
+        mock_client = MagicMock()
+        mock_build.return_value = mock_client
+        mock_client.conversations_history.return_value = {
+            "messages": [{"user": "U999", "text": "someone else", "ts": "1000.0", "reply_count": 0}]
+        }
+        mock_client.conversations_list.return_value = {"channels": []}
+        result = fetch_today_slack("token", "U123", ["C001"])
+    assert result["channels"] == []
+
+
+def test_dm_captures_both_sides_in_chronological_order():
+    with patch("slack_client.build_web_client") as mock_build, \
+         patch("slack_client._today_oldest_ts", return_value="0"):
+        mock_client = MagicMock()
+        mock_build.return_value = mock_client
+        # conversations_history returns NEWEST first
+        mock_client.conversations_list.return_value = {"channels": [{"id": "D1", "user": "U777"}]}
+        mock_client.conversations_history.return_value = {
+            "messages": [
+                {"user": "U123", "text": "second (mine)", "ts": "1002.0"},
+                {"user": "U777", "text": "first (theirs)", "ts": "1001.0"},
+            ]
+        }
+        result = fetch_today_slack("token", "U123", [])
+    dm = result["dms"][0]
+    assert dm["partner_id"] == "U777"
+    assert dm["messages"] == [
+        {"user_id": "U777", "text": "first (theirs)"},
+        {"user_id": "U123", "text": "second (mine)"},
+    ]
+
+
+def test_dm_without_user_message_excluded():
+    with patch("slack_client.build_web_client") as mock_build, \
+         patch("slack_client._today_oldest_ts", return_value="0"):
+        mock_client = MagicMock()
+        mock_build.return_value = mock_client
+        mock_client.conversations_list.return_value = {"channels": [{"id": "D1", "user": "U777"}]}
+        mock_client.conversations_history.return_value = {
+            "messages": [{"user": "U777", "text": "only them", "ts": "1001.0"}]
+        }
+        result = fetch_today_slack("token", "U123", [])
+    assert result["dms"] == []
 
 
 def test_format_for_prompt_produces_string():
@@ -163,9 +169,9 @@ def test_format_for_prompt_empty_returns_no_activity():
 
 
 def test_channel_api_error_logs_warning_and_returns_empty(capsys):
-    with patch("slack_client.WebClient") as mock_wc_class:
+    with patch("slack_client.build_web_client") as mock_build:
         mock_client = MagicMock()
-        mock_wc_class.return_value = mock_client
+        mock_build.return_value = mock_client
         mock_client.conversations_history.side_effect = SlackApiError(
             "channel_not_found", {"error": "channel_not_found"}
         )
@@ -180,9 +186,9 @@ def test_channel_api_error_logs_warning_and_returns_empty(capsys):
 
 
 def test_dm_list_api_error_logs_warning_and_returns_empty(capsys):
-    with patch("slack_client.WebClient") as mock_wc_class:
+    with patch("slack_client.build_web_client") as mock_build:
         mock_client = MagicMock()
-        mock_wc_class.return_value = mock_client
+        mock_build.return_value = mock_client
         mock_client.conversations_history.return_value = {"messages": []}
         mock_client.conversations_list.side_effect = SlackApiError(
             "missing_scope", {"error": "missing_scope"}
@@ -197,9 +203,9 @@ def test_dm_list_api_error_logs_warning_and_returns_empty(capsys):
 
 def test_dm_missing_scope_prints_once_and_stops(capsys):
     """missing_scope on DM history should print one warning and bail, not one per DM."""
-    with patch("slack_client.WebClient") as mock_wc_class:
+    with patch("slack_client.build_web_client") as mock_build:
         mock_client = MagicMock()
-        mock_wc_class.return_value = mock_client
+        mock_build.return_value = mock_client
         mock_client.conversations_list.return_value = {
             "channels": [{"id": "D001"}, {"id": "D002"}, {"id": "D003"}]
         }
