@@ -177,41 +177,46 @@ def fetch_today_slack(token: str, user_id: str, channel_ids: list, debug: bool =
     return {"channels": channels, "dms": dms}
 
 
-def format_for_prompt(data: dict, channel_names: dict | None = None) -> str:
-    """Format fetched Slack data as a readable string for the Claude prompt.
-
-    Args:
-        data: Output of fetch_today_slack.
-        channel_names: Optional mapping of channel ID -> display name,
-                       e.g. {"C6BDPLG8N": "general"}. IDs without a mapping
-                       are shown as-is.
-    """
+def format_for_prompt(data, channel_names=None, directory=None):
+    """Render fetched Slack data as attributed lines for the summarizer prompt."""
     if not data["channels"] and not data["dms"]:
         return "No Slack activity today."
 
     names = channel_names or {}
 
-    def _channel_label(channel_id: str) -> str:
+    ids = set()
+    for item in data["channels"]:
+        ids.add(item["parent"]["user_id"])
+        ids.update(r["user_id"] for r in item["replies"])
+    for dm in data["dms"]:
+        ids.add(dm.get("partner_id", ""))
+        ids.update(m["user_id"] for m in dm["messages"])
+    ids.discard("")
+
+    resolved = directory.resolve_many(ids) if directory else {}
+
+    def who(uid):
+        return resolved.get(uid, uid or "unknown")
+
+    def _channel_label(channel_id):
         name = names.get(channel_id, channel_id)
         return f"#{name}" if not name.startswith("#") else name
 
     lines = []
-
     if data["channels"]:
-        lines.append("## Channel Messages")
+        lines.append("## Channel Threads")
         for item in data["channels"]:
             label = _channel_label(item["channel_id"])
-            is_mine = item.get("is_mine", True)
-            prefix = "YOU" if is_mine else "CONTEXT"
-            lines.append(f"[{label}] {prefix}: {item['text']}")
-            if item.get("thread"):
-                for reply in item["thread"]:
-                    lines.append(f"  > YOU: {reply}")
+            p = item["parent"]
+            lines.append(f"[{label}] {who(p['user_id'])}: {p['text']}")
+            for r in item["replies"]:
+                lines.append(f"  {who(r['user_id'])}: {r['text']}")
 
     if data["dms"]:
         lines.append("## Direct Messages")
         for dm in data["dms"]:
-            for msg in dm["messages"]:
-                lines.append(f"[DM] {msg}")
+            lines.append(f"[DM with {who(dm.get('partner_id', ''))}]")
+            for m in dm["messages"]:
+                lines.append(f"  {who(m['user_id'])}: {m['text']}")
 
     return "\n".join(lines)

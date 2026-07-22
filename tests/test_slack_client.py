@@ -188,21 +188,54 @@ def test_dm_without_user_message_excluded():
     assert result["dms"] == []
 
 
-def test_format_for_prompt_produces_string():
+def test_format_attributes_names_via_directory():
+    from unittest.mock import MagicMock
+    directory = MagicMock()
+    directory.resolve_many.return_value = {"U123": "You", "U999": "Helen Wang"}
     data = {
-        "channels": [
-            {"channel_id": "C001", "text": "hello", "thread": None}
-        ],
-        "dms": []
+        "channels": [{
+            "channel_id": "C001",
+            "parent": {"user_id": "U999", "text": "next-grade isn't useful"},
+            "replies": [{"user_id": "U123", "text": "agreed, it's not a reference point"}],
+            "is_mine": False,
+        }],
+        "dms": [],
     }
+    result = format_for_prompt(data, channel_names={"C001": "training"}, directory=directory)
+    assert "[#training] Helen Wang: next-grade isn't useful" in result
+    assert "You: agreed, it's not a reference point" in result
+
+
+def test_format_dm_attributes_both_sides():
+    from unittest.mock import MagicMock
+    directory = MagicMock()
+    directory.resolve_many.return_value = {"U123": "You", "U777": "Anand Puthumanappully"}
+    data = {
+        "channels": [],
+        "dms": [{
+            "channel_id": "D1",
+            "partner_id": "U777",
+            "messages": [
+                {"user_id": "U777", "text": "Fresno wants bulk deletes"},
+                {"user_id": "U123", "text": "confirming with the team"},
+            ],
+        }],
+    }
+    result = format_for_prompt(data, directory=directory)
+    assert "[DM with Anand Puthumanappully]" in result
+    assert "Anand Puthumanappully: Fresno wants bulk deletes" in result
+    assert "You: confirming with the team" in result
+
+
+def test_format_without_directory_falls_back_to_ids():
+    data = {"channels": [{"channel_id": "C001",
+            "parent": {"user_id": "U999", "text": "hi"}, "replies": [], "is_mine": False}], "dms": []}
     result = format_for_prompt(data)
-    assert isinstance(result, str)
-    assert "hello" in result
+    assert "U999: hi" in result
 
 
-def test_format_for_prompt_empty_returns_no_activity():
-    result = format_for_prompt({"channels": [], "dms": []})
-    assert result == "No Slack activity today."
+def test_format_empty_returns_no_activity():
+    assert format_for_prompt({"channels": [], "dms": []}) == "No Slack activity today."
 
 
 def test_channel_api_error_logs_warning_and_returns_empty(capsys):
