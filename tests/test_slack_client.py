@@ -116,6 +116,43 @@ def test_other_users_standalone_message_excluded():
     assert result["channels"] == []
 
 
+def test_channel_threads_returned_chronologically():
+    with patch("slack_client.build_web_client") as mock_build, \
+         patch("slack_client._today_oldest_ts", return_value="0"), \
+         patch("slack_client._lookback_oldest_ts", return_value="0"):
+        mock_client = MagicMock()
+        mock_build.return_value = mock_client
+        # conversations_history returns NEWEST-first
+        mock_client.conversations_history.return_value = {
+            "messages": [
+                {"user": "U123", "text": "newer post", "ts": "2000.0", "reply_count": 0},
+                {"user": "U123", "text": "older post", "ts": "1000.0", "reply_count": 0},
+            ]
+        }
+        mock_client.conversations_list.return_value = {"channels": []}
+        result = fetch_today_slack("token", "U123", ["C001"])
+    texts = [c["parent"]["text"] for c in result["channels"]]
+    assert texts == ["older post", "newer post"]  # reversed to chronological
+
+
+def test_user_post_with_no_replies_captured_with_empty_replies():
+    with patch("slack_client.build_web_client") as mock_build, \
+         patch("slack_client._today_oldest_ts", return_value="0"), \
+         patch("slack_client._lookback_oldest_ts", return_value="0"):
+        mock_client = MagicMock()
+        mock_build.return_value = mock_client
+        mock_client.conversations_history.return_value = {
+            "messages": [{"user": "U123", "text": "solo post", "ts": "1000.0", "reply_count": 0}]
+        }
+        mock_client.conversations_list.return_value = {"channels": []}
+        result = fetch_today_slack("token", "U123", ["C001"])
+    ch = result["channels"][0]
+    assert ch["parent"] == {"user_id": "U123", "text": "solo post"}
+    assert ch["replies"] == []
+    assert ch["is_mine"] is True
+    mock_client.conversations_replies.assert_not_called()  # no thread fetch when reply_count == 0
+
+
 def test_dm_captures_both_sides_in_chronological_order():
     with patch("slack_client.build_web_client") as mock_build, \
          patch("slack_client._today_oldest_ts", return_value="0"):
