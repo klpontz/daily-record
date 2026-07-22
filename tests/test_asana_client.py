@@ -94,23 +94,31 @@ def test_comments_filters_to_user_and_today():
 
 
 def test_transient_error_on_body_read_is_retried():
-    """The C2 case: error at .json()/body time, not at get() time."""
-    calls = {"n": 0}
+    """The C2 case: error at .json()/body-read time, not at get() time."""
+    json_calls = {"n": 0}
 
-    def flaky_get(url, **kwargs):
+    def flaky_json():
+        json_calls["n"] += 1
+        if json_calls["n"] == 1:
+            raise requests.exceptions.ChunkedEncodingError("truncated body")
+        return {"data": []}
+
+    def get(url, **kwargs):
+        assert "timeout" in kwargs, "session.get called without timeout"
         if "users/me" in url:
             return _resp({"data": {"gid": "U1"}})
         if "tasks" in url and "search" not in url:
-            calls["n"] += 1
-            if calls["n"] == 1:
-                raise requests.exceptions.ChunkedEncodingError("truncated body")
-            return _resp({"data": []})
+            m = MagicMock()
+            m.raise_for_status = MagicMock()
+            m.status_code = 200
+            m.json.side_effect = flaky_json
+            return m
         return _resp({"data": []})
 
-    with patch("asana_client._session", return_value=_fake_session(flaky_get)):
+    with patch("asana_client._session", return_value=_fake_session(get)):
         with patch("retry_util.time.sleep", return_value=None):
             result = fetch_today_asana("pat", "WS1")
-    assert calls["n"] == 2  # retried once
+    assert json_calls["n"] == 2  # body read failed once, retried, succeeded
     assert result["completed_tasks"] == []
 
 
@@ -128,6 +136,24 @@ def test_bad_story_call_skips_task_not_whole_pull():
         with patch("retry_util.time.sleep", return_value=None):
             result = fetch_today_asana("pat", "WS1")
     assert result["comments"] == []  # story failure skipped, pull survived
+
+
+def test_incomplete_read_on_story_skips_task_not_whole_pull():
+    from http.client import IncompleteRead
+
+    def get(url, **kwargs):
+        if "users/me" in url:
+            return _resp({"data": {"gid": "U1"}})
+        if "search" in url:
+            return _resp({"data": [{"gid": "T1", "name": "Task"}]})
+        if "stories" in url:
+            raise IncompleteRead(b"", 100)  # exhausts retries, re-raised
+        return _resp({"data": []})
+
+    with patch("asana_client._session", return_value=_fake_session(get)):
+        with patch("retry_util.time.sleep", return_value=None):
+            result = fetch_today_asana("pat", "WS1")  # must NOT raise
+    assert result["comments"] == []
 
 
 # --- format_for_prompt tests (unchanged behavior) ---

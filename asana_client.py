@@ -1,11 +1,10 @@
-import ssl
 from datetime import date
 
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-from retry_util import with_retries
+from retry_util import with_retries, TRANSPORT_ERRORS
 
 ASANA_BASE = "https://app.asana.com/api/1.0"
 _TIMEOUT = (10, 30)  # (connect, read) seconds
@@ -79,7 +78,7 @@ def _fetch_my_comments(session, pat, workspace_gid, today) -> list:
                 session, f"{ASANA_BASE}/tasks/{task['gid']}/stories", pat,
                 {"opt_fields": "created_at,created_by.gid,type,text,resource_subtype"},
             )
-        except (requests.exceptions.RequestException, ssl.SSLError):
+        except TRANSPORT_ERRORS:
             continue  # one bad task must not kill the whole pull
         for story in stories.get("data", []):
             if not story:
