@@ -95,3 +95,21 @@ def test_bulk_load_writes_cache_atomically(tmp_path):
     d.resolve_many(["U1"])
     assert json.loads(cache.read_text())["U1"] == "Helen"
     assert not (tmp_path / "u.tmp").exists()  # temp file cleaned up by os.replace
+
+
+def test_transport_error_on_bulk_load_degrades_to_raw_ids(tmp_path, capsys):
+    import ssl
+    c = _client()
+    c.users_list.side_effect = ssl.SSLError("UNEXPECTED_EOF_WHILE_READING")
+    d = SlackUserDirectory(c, own_id="U9", cache_path=tmp_path / "u.json")
+    assert d.resolve_many(["U1"]) == {"U1": "U1"}  # raw id, no raise
+    assert "⚠" in capsys.readouterr().out
+
+
+def test_transport_error_on_lazy_lookup_degrades_to_raw_id(tmp_path):
+    import ssl
+    # bulk load succeeds but U2 is absent -> lazy users_info hits a transport drop
+    c = _client(members=[{"id": "U1", "profile": {"real_name": "Helen"}}])
+    c.users_info.side_effect = ssl.SSLError("eof")
+    d = SlackUserDirectory(c, own_id="U9", cache_path=tmp_path / "u.json")
+    assert d.resolve_many(["U2"]) == {"U2": "U2"}  # raw id, no raise

@@ -10,6 +10,8 @@ from pathlib import Path
 
 from slack_sdk.errors import SlackApiError
 
+from retry_util import TRANSPORT_ERRORS
+
 DEFAULT_CACHE = Path(__file__).parent / ".cache" / "slack_users.json"
 CACHE_TTL_SECONDS = 7 * 24 * 3600
 
@@ -88,6 +90,8 @@ class SlackUserDirectory:
                 print(f"⚠ Slack user names unavailable: missing scope '{needed}'. Showing raw IDs.")
             else:
                 print(f"⚠ Slack users.list failed: {e}. Showing raw IDs.")
+        except TRANSPORT_ERRORS as e:
+            print(f"⚠ Slack users.list failed (network): {e}. Showing raw IDs.")
         return names
 
     def _lazy_lookup(self, uid):
@@ -100,5 +104,5 @@ class SlackUserDirectory:
                 return name
             else:
                 return uid
-        except SlackApiError:
+        except (SlackApiError, *TRANSPORT_ERRORS):
             return uid

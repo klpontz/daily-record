@@ -79,6 +79,7 @@ def _fetch_channel_messages(client: WebClient, channel_id: str, user_id: str, ol
                 thread = _fetch_thread(client, channel_id, msg_ts, oldest) if msg.get("reply_count", 0) > 0 else []
                 parent = thread[0] if thread else {"user_id": msg.get("user", ""), "text": msg.get("text", "")}
                 replies = thread[1:] if thread else []
+                # is_mine retained for future consumers; the attributed formatter keys on names, not this flag
                 results.append({"channel_id": channel_id, "parent": parent, "replies": replies, "is_mine": True})
             elif has_thread_activity_today:
                 thread = _fetch_thread(client, channel_id, msg_ts, oldest)
