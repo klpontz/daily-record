@@ -1,7 +1,40 @@
-import requests
+import ssl
 from datetime import date
 
+import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+
+from retry_util import with_retries
+
 ASANA_BASE = "https://app.asana.com/api/1.0"
+_TIMEOUT = (10, 30)  # (connect, read) seconds
+
+
+def _session() -> requests.Session:
+    """Session whose adapter retries connect/header/5xx; body reads are
+    retried at the application layer via _get_json + with_retries."""
+    session = requests.Session()
+    retry = Retry(
+        total=4, connect=4, read=4, status=4,
+        backoff_factor=1.0,
+        status_forcelist=[429, 500, 502, 503, 504],
+        allowed_methods=frozenset(["GET"]),
+        respect_retry_after_header=True,
+        raise_on_status=False,
+    )
+    session.mount("https://", HTTPAdapter(max_retries=retry))
+    return session
+
+
+def _get_json(session, url, pat, params=None) -> dict:
+    """GET with timeout; the body read is inside with_retries so a
+    truncated-body IncompleteRead/ChunkedEncodingError is retried."""
+    def _call():
+        resp = session.get(url, headers=_headers(pat), params=params, timeout=_TIMEOUT)
+        resp.raise_for_status()
+        return resp.json()
+    return with_retries(_call)
 
 
 def _headers(pat: str) -> dict:
@@ -16,8 +49,7 @@ def _project_name(task: dict) -> str | None:
     return None
 
 
-def _fetch_completed_tasks(pat: str, workspace_gid: str, today: str) -> list:
-    """Fetch tasks assigned to me and completed today."""
+def _fetch_completed_tasks(session, pat, workspace_gid, today) -> list:
     params = {
         "workspace": workspace_gid,
         "assignee": "me",
@@ -25,48 +57,31 @@ def _fetch_completed_tasks(pat: str, workspace_gid: str, today: str) -> list:
         "opt_fields": "name,completed,completed_at,gid,parent,memberships.project.name",
         "limit": 100,
     }
-    resp = requests.get(f"{ASANA_BASE}/tasks", headers=_headers(pat), params=params)
-    resp.raise_for_status()
-    tasks = resp.json().get("data", [])
-    # Exclude subtasks (parent is not None) — they're too granular for the daily log
+    data = _get_json(session, f"{ASANA_BASE}/tasks", pat, params)
+    tasks = data.get("data", [])
     return [t for t in tasks if t.get("completed") and t.get("parent") is None]
 
 
-def _get_my_gid(pat: str) -> str:
-    """Fetch the authenticated user's GID."""
-    resp = requests.get(f"{ASANA_BASE}/users/me", headers=_headers(pat))
-    resp.raise_for_status()
-    return resp.json()["data"]["gid"]
+def _get_my_gid(session, pat) -> str:
+    return _get_json(session, f"{ASANA_BASE}/users/me", pat)["data"]["gid"]
 
 
-def _fetch_my_comments(pat: str, workspace_gid: str, today: str) -> list:
-    """Fetch comments I made today on any task modified today across the workspace.
-
-    No assignee filter so comments on tasks assigned to others are captured.
-    N+1 calls (one /stories per task) are unavoidable; Asana has no bulk stories endpoint.
-    """
-    user_gid = _get_my_gid(pat)
-
-    # Use workspace search to find tasks modified today (no assignee restriction)
-    params = {
-        "modified_on.after": today,
-        "opt_fields": "name,gid,memberships.project.name",
-        "limit": 100,
-    }
-    resp = requests.get(f"{ASANA_BASE}/workspaces/{workspace_gid}/tasks/search", headers=_headers(pat), params=params)
-    resp.raise_for_status()
-    tasks = resp.json().get("data", [])
+def _fetch_my_comments(session, pat, workspace_gid, today) -> list:
+    user_gid = _get_my_gid(session, pat)
+    params = {"modified_on.after": today, "opt_fields": "name,gid,memberships.project.name", "limit": 100}
+    data = _get_json(session, f"{ASANA_BASE}/workspaces/{workspace_gid}/tasks/search", pat, params)
+    tasks = data.get("data", [])
 
     comments = []
     for task in tasks:
-        stories_resp = requests.get(
-            f"{ASANA_BASE}/tasks/{task['gid']}/stories",
-            headers=_headers(pat),
-            params={"opt_fields": "created_at,created_by.gid,type,text,resource_subtype"}
-        )
-        if stories_resp.status_code != 200:
-            continue
-        for story in stories_resp.json().get("data", []):
+        try:
+            stories = _get_json(
+                session, f"{ASANA_BASE}/tasks/{task['gid']}/stories", pat,
+                {"opt_fields": "created_at,created_by.gid,type,text,resource_subtype"},
+            )
+        except (requests.exceptions.RequestException, ssl.SSLError):
+            continue  # one bad task must not kill the whole pull
+        for story in stories.get("data", []):
             if not story:
                 continue
             if (
@@ -79,23 +94,15 @@ def _fetch_my_comments(pat: str, workspace_gid: str, today: str) -> list:
                     "project": _project_name(task),
                     "comment": story.get("text", ""),
                 })
-
     return comments
 
 
-def fetch_today_asana(pat: str, workspace_gid: str) -> dict:
-    """Fetch today's Asana activity.
-
-    Returns:
-        {
-            "completed_tasks": [{"name": str, "gid": str, ...}, ...],
-            "comments": [{"task": str, "comment": str}, ...]
-        }
-    """
+def fetch_today_asana(pat, workspace_gid) -> dict:
     today = date.today().isoformat()
+    session = _session()
     return {
-        "completed_tasks": _fetch_completed_tasks(pat, workspace_gid, today),
-        "comments": _fetch_my_comments(pat, workspace_gid, today),
+        "completed_tasks": _fetch_completed_tasks(session, pat, workspace_gid, today),
+        "comments": _fetch_my_comments(session, pat, workspace_gid, today),
     }
 
 
