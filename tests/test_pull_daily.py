@@ -141,3 +141,27 @@ def test_dry_run_does_not_write_log(tmp_path):
 
     log_files = list(log_dir.iterdir())
     assert len(log_files) == 0
+
+
+def test_run_passes_directory_to_slack_format(tmp_path):
+    log_dir = tmp_path / "logs"; log_dir.mkdir()
+    template = tmp_path / "template.md"; template.write_text("### Slack\n-\n\n### Asana\n-\n")
+    config = {
+        "anthropic_api_key": "key", "slack_bot_token": "token", "slack_user_id": "U1",
+        "slack_channels": ["C1"], "slack_channel_names": {}, "asana_pat": "pat",
+        "asana_workspace_gid": "WS1", "log_dir": str(log_dir), "template_path": str(template),
+        "obsidian_vault_path": "",
+    }
+    with patch("pull_daily.fetch_today_slack", return_value={"channels": [], "dms": []}), \
+         patch("pull_daily.fetch_today_asana", return_value={"completed_tasks": [], "comments": []}), \
+         patch("pull_daily.summarize", return_value="- ok"), \
+         patch("pull_daily.slack_format") as mock_slack_format, \
+         patch("pull_daily.asana_format", return_value="raw"), \
+         patch("pull_daily.build_web_client"), \
+         patch("pull_daily.SlackUserDirectory") as mock_dir:
+        mock_slack_format.return_value = "raw slack"
+        import pull_daily
+        pull_daily.run(config, dry_run=True)
+
+    # directory instance was passed as the third arg to slack_format
+    assert mock_slack_format.call_args.args[2] is mock_dir.return_value

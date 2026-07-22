@@ -13,7 +13,8 @@ from dotenv import load_dotenv
 
 from asana_client import fetch_today_asana, format_for_prompt as asana_format
 from log_writer import get_log_path, write_log
-from slack_client import fetch_today_slack, format_for_prompt as slack_format
+from slack_client import fetch_today_slack, format_for_prompt as slack_format, build_web_client
+from user_directory import SlackUserDirectory
 from summarizer import summarize
 
 REQUIRED_KEYS = [
@@ -96,7 +97,8 @@ def run(config: dict, dry_run: bool = False, debug: bool = False) -> dict:
             debug=debug,
         )
         slack_count = len(slack_data["channels"]) + len(slack_data["dms"])
-        raw = slack_format(slack_data, config.get("slack_channel_names"))
+        directory = SlackUserDirectory(build_web_client(config["slack_bot_token"]), config["slack_user_id"])
+        raw = slack_format(slack_data, config.get("slack_channel_names"), directory)
         try:
             slack_content = summarize(
                 config["anthropic_api_key"],
