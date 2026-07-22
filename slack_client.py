@@ -1,6 +1,31 @@
+import ssl
 from datetime import date, datetime, timezone
+from http.client import IncompleteRead
+from http.client import RemoteDisconnected
+from urllib.error import URLError
+
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
+from slack_sdk.http_retry.builtin_handlers import (
+    ConnectionErrorRetryHandler,
+    RateLimitErrorRetryHandler,
+)
+
+
+def build_web_client(token: str) -> WebClient:
+    """WebClient with retry handlers that actually cover the failures we hit.
+
+    slack-sdk's default ConnectionErrorRetryHandler only retries
+    URLError/ConnectionResetError/RemoteDisconnected — NOT IncompleteRead or
+    SSLEOFError, which is what Slack drops on. Adding them to error_types makes
+    the SDK's retry loop (which does wrap the body read) retry correctly.
+    """
+    conn_retry = ConnectionErrorRetryHandler(
+        max_retry_count=4,
+        error_types=[URLError, ConnectionResetError, RemoteDisconnected, IncompleteRead, ssl.SSLError],
+    )
+    rate_retry = RateLimitErrorRetryHandler(max_retry_count=3)
+    return WebClient(token=token, retry_handlers=[conn_retry, rate_retry])
 
 
 def _today_oldest_ts() -> str:
@@ -123,7 +148,7 @@ def fetch_today_slack(token: str, user_id: str, channel_ids: list, debug: bool =
             "dms": [{"channel_id": str, "messages": [str, ...]}, ...]
         }
     """
-    client = WebClient(token=token)
+    client = build_web_client(token)
     oldest = _today_oldest_ts()
 
     if debug:

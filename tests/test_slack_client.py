@@ -213,3 +213,17 @@ def test_dm_missing_scope_prints_once_and_stops(capsys):
     captured = capsys.readouterr()
     assert captured.out.count("⚠") == 1
     assert "im:history" in captured.out
+
+
+def test_build_web_client_retries_incomplete_read_and_ssl_error():
+    import ssl
+    from http.client import IncompleteRead
+    from slack_sdk.http_retry.builtin_handlers import ConnectionErrorRetryHandler
+    from slack_client import build_web_client
+
+    client = build_web_client("xoxb-test")
+    conn_handlers = [h for h in client.retry_handlers if isinstance(h, ConnectionErrorRetryHandler)]
+    assert conn_handlers, "no ConnectionErrorRetryHandler configured"
+    error_types = conn_handlers[0].error_types_to_do_retries
+    assert IncompleteRead in error_types
+    assert ssl.SSLError in error_types
