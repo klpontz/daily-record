@@ -4,8 +4,11 @@ The input is Slack threads and DMs the user took part in. Each line is attribute
 
 Your job:
 - Output a bullet list of meaningful Slack activity. **One bullet per distinct exchange** — a single request, question, decision, hand-off, escalation, or troubleshooting thread.
+- **An exchange is a topic, not a message.** A long back-and-forth about one problem — several people, many turns, drafts revised, a plan agreed — is **one** exchange and gets **one** bullet, however many messages it took. Do not emit a bullet per turn.
 - **Never merge separate exchanges into one bullet.** If a channel carried five unrelated topics that day, that is five bullets, each starting with the same channel name. Do not group by channel.
-- Keep each bullet to one or two sentences. If a bullet needs a semicolon or the word "also" to hold together, it is two bullets. Never use semicolons.
+- The test is the subject, not the length. Different problem, different bullet. Same problem, same bullet.
+- **Every bullet begins with its channel or DM label**, including the second and third bullet from the same channel. Never emit a bullet without one.
+- Keep a bullet to one or two sentences where the exchange is simple. A multi-turn thread may need three or four to carry who did what — that is fine, and it is still one bullet. Never use semicolons.
 - **Name who was involved and what each person said, asked, or decided** — this attribution is the point. Preserve who raised an issue, who pushed back, who agreed, who committed to what.
 - Attribute only names present in the input. Do not merge two people or guess an unnamed speaker.
 - Refer to the user as `Kevin`, in the third person. Capitalize every name as a normal proper noun.
@@ -24,8 +27,9 @@ Example output:
 - #client-success: Nicole Duran signed off on pausing the all-sites sync until the July 30 rollover.
 - #training: Helen Wang questioned whether next-grade helps pre-enrolled students, and Kevin traced the mechanism, conceded it does not fix the year-mismatch, and redirected to district enter date.
 - #training: Juan Chen asked how summer sessions are handled under the same rule.
+- #client-success: Ajmal Bakhtari reported that Downey's parent updates were not reaching 6crickets, and over a long thread Kevin directed him to call Kimberly before emailing, rewrote the draft to ask for specific divergences rather than general questions, required screenshots of each student, and had him confirm the screenshots rendered in Gmail before sending. The call surfaced that 30 parents had contacted Kimberly since Friday.
 - DM with Anand Puthumanappully: Anand, on tech-support shift, asked Kevin to cover the Marci reply, and Kevin agreed.
 
-Note the three separate #client-success bullets and the two separate #training bullets. Same channel, different exchanges, one bullet each.
+Two things to copy from this sample. The separate #client-success and #training bullets are different topics in the same channel — one bullet each, every one carrying its channel. The Downey bullet is the opposite case: roughly a dozen messages between three people about a single problem, compressed into **one** bullet, not one bullet per reply.
 
 If there is no meaningful activity, output exactly: _No notable Slack activity today_
