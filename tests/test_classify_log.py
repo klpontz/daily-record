@@ -1,6 +1,6 @@
 from unittest.mock import MagicMock, patch
 import pytest
-from classify_log import extract_bullets, classify_items, format_breakdown
+from classify_log import extract_bullets, classify_items, format_breakdown, main
 
 
 def test_classify_items_empty_makes_no_api_call():
@@ -119,3 +119,46 @@ def test_format_breakdown_shows_zero_percent_categories():
 
 def test_format_breakdown_empty_returns_no_items_message():
     assert format_breakdown([]) == "No items to classify."
+
+
+def test_main_empty_log_prints_no_items_message(tmp_path, capsys):
+    log_file = tmp_path / "2026-09-24.md"
+    log_file.write_text("### Done\n- \n\n### Slack\n- \n")
+
+    with patch.dict("classify_log.os.environ", {"TYPESAFE_API_KEY": "ts-key"}):
+        exit_code = main([str(log_file)])
+
+    assert exit_code == 0
+    assert "No items to classify." in capsys.readouterr().out
+
+
+def test_main_classifies_and_prints_breakdown(tmp_path, capsys):
+    log_file = tmp_path / "2026-09-24.md"
+    log_file.write_text("### Done\n- Debugged the thing\n")
+
+    with patch("classify_log.TypeSafeClient") as mock_class:
+        mock_client = MagicMock()
+        mock_class.return_value = mock_client
+        mock_client.system_one.return_value = _mock_choice_result({"item_0": ("product_qa", 0.9)})
+
+        with patch.dict("classify_log.os.environ", {"TYPESAFE_API_KEY": "ts-key"}):
+            exit_code = main([str(log_file)])
+
+    assert exit_code == 0
+    assert "- Product/QA (~100%):" in capsys.readouterr().out
+
+
+def test_main_api_failure_prints_clear_message_and_exits_1(tmp_path, capsys):
+    log_file = tmp_path / "2026-09-24.md"
+    log_file.write_text("### Done\n- Debugged the thing\n")
+
+    with patch("classify_log.TypeSafeClient") as mock_class:
+        mock_client = MagicMock()
+        mock_class.return_value = mock_client
+        mock_client.system_one.side_effect = Exception("TypeSafe down")
+
+        with patch.dict("classify_log.os.environ", {"TYPESAFE_API_KEY": "ts-key"}):
+            exit_code = main([str(log_file)])
+
+    assert exit_code == 1
+    assert "Classification failed" in capsys.readouterr().err

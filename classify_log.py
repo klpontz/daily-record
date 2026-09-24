@@ -1,3 +1,8 @@
+import os
+import sys
+from pathlib import Path
+
+from dotenv import load_dotenv
 from log_writer import read_section
 from typesafe_sdk import Choice, TypeSafeClient
 
@@ -83,3 +88,31 @@ def format_breakdown(classified_items: list[dict]) -> str:
             suffix = " (low confidence — check by hand)" if item["confidence"] < LOW_CONFIDENCE else ""
             lines.append(f"    {item['text']}{suffix}")
     return "\n".join(lines).rstrip()
+
+
+def main(argv: list[str] | None = None) -> int:
+    load_dotenv()
+    argv = argv if argv is not None else sys.argv[1:]
+    if not argv:
+        print("Usage: python3 classify_log.py <path-to-log.md>")
+        return 1
+
+    log_text = Path(argv[0]).read_text()
+    items = extract_bullets(log_text)
+    if not items:
+        print(format_breakdown([]))
+        return 0
+
+    try:
+        api_key = os.environ["TYPESAFE_API_KEY"]
+        classified = classify_items(api_key, items)
+    except Exception as e:
+        print(f"Classification failed: {e}", file=sys.stderr)
+        return 1
+
+    print(format_breakdown(classified))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
