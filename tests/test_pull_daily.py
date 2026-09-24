@@ -3,6 +3,20 @@ from unittest.mock import MagicMock, patch, call
 from pathlib import Path
 
 
+def test_missing_typesafe_key_exits(tmp_path):
+    complete_env = {
+        "ANTHROPIC_API_KEY": "key", "SLACK_BOT_TOKEN": "token", "SLACK_USER_ID": "U1",
+        "SLACK_CHANNELS": "C1", "ASANA_PAT": "pat", "ASANA_WORKSPACE_GID": "WS1",
+        "LOG_DIR": str(tmp_path), "TEMPLATE_PATH": str(tmp_path / "t.md"),
+        # TYPESAFE_API_KEY intentionally omitted
+    }
+    with patch("pull_daily.load_dotenv"):
+        with patch.dict("pull_daily.os.environ", complete_env, clear=True):
+            import pull_daily
+            with pytest.raises(SystemExit):
+                pull_daily.load_config()
+
+
 def test_missing_env_key_exits(monkeypatch, tmp_path):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.setenv("SLACK_BOT_TOKEN", "xoxb-test")

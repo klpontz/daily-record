@@ -19,13 +19,14 @@ from summarizer import summarize
 
 REQUIRED_KEYS = [
     "ANTHROPIC_API_KEY",
-    "SLACK_BOT_TOKEN",
-    "SLACK_USER_ID",
-    "SLACK_CHANNELS",
     "ASANA_PAT",
     "ASANA_WORKSPACE_GID",
     "LOG_DIR",
+    "SLACK_BOT_TOKEN",
+    "SLACK_CHANNELS",
+    "SLACK_USER_ID",
     "TEMPLATE_PATH",
+    "TYPESAFE_API_KEY",
 ]
 
 
@@ -48,6 +49,7 @@ def load_config() -> dict:
         "asana_workspace_gid": os.environ["ASANA_WORKSPACE_GID"],
         "log_dir": os.environ["LOG_DIR"],
         "template_path": os.environ["TEMPLATE_PATH"],
+        "typesafe_api_key": os.environ["TYPESAFE_API_KEY"],
         "obsidian_vault_path": os.environ.get("OBSIDIAN_VAULT_PATH", ""),
     }
 
