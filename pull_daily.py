@@ -11,7 +11,8 @@ from urllib.parse import quote
 
 from dotenv import load_dotenv
 
-from asana_client import fetch_today_asana, format_for_prompt as asana_format
+from asana_client import fetch_today_asana
+from asana_filter import filter_items, format_filtered
 from log_writer import get_log_path, write_log
 from slack_client import fetch_today_slack, format_for_prompt as slack_format, build_web_client
 from user_directory import SlackUserDirectory
@@ -122,17 +123,17 @@ def run(config: dict, dry_run: bool = False, debug: bool = False) -> dict:
             config["asana_workspace_gid"],
         )
         asana_count = len(asana_data["completed_tasks"]) + len(asana_data["comments"])
-        raw = asana_format(asana_data)
         try:
-            asana_content = summarize(
-                config["anthropic_api_key"],
-                str(_prompts_dir() / "asana_filter.md"),
-                raw,
+            kept_tasks, kept_comments = filter_items(
+                config["typesafe_api_key"],
+                asana_data["completed_tasks"],
+                asana_data["comments"],
             )
+            asana_content = format_filtered(kept_tasks, kept_comments)
             asana_ok = True
         except Exception as e:
-            print(f"⚠ Asana summarization failed: {e}")
-            asana_content = "_Summarization failed — run manually_"
+            print(f"⚠ Asana filtering failed: {e}")
+            asana_content = "_Filtering failed — run manually_"
     except Exception as e:
         print(f"⚠ Asana pull failed: {e}")
         # asana_content stays None — section will be skipped entirely

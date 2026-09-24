@@ -45,6 +45,7 @@ def test_both_sources_fail_writes_nothing(tmp_path):
         "slack_channels": ["C1"],
         "asana_pat": "pat",
         "asana_workspace_gid": "WS1",
+        "typesafe_api_key": "ts-key",
         "log_dir": str(log_dir),
         "template_path": str(template),
         "obsidian_vault_path": "",
@@ -70,61 +71,76 @@ def test_slack_api_failure_skips_slack_section_but_writes_asana(tmp_path):
     template.write_text("### Slack\n-\n\n### Asana\n-\n")
 
     config = {
-        "anthropic_api_key": "key",
-        "slack_bot_token": "token",
-        "slack_user_id": "U1",
-        "slack_channels": ["C1"],
-        "asana_pat": "pat",
-        "asana_workspace_gid": "WS1",
-        "log_dir": str(log_dir),
-        "template_path": str(template),
-        "obsidian_vault_path": "",
+        "anthropic_api_key": "key", "slack_bot_token": "token", "slack_user_id": "U1",
+        "slack_channels": ["C1"], "asana_pat": "pat", "asana_workspace_gid": "WS1",
+        "typesafe_api_key": "ts-key",
+        "log_dir": str(log_dir), "template_path": str(template), "obsidian_vault_path": "",
     }
 
     with patch("pull_daily.fetch_today_slack", side_effect=Exception("Slack down")):
         with patch("pull_daily.fetch_today_asana", return_value={"completed_tasks": [{"name": "Task A", "gid": "T1"}], "comments": []}):
-            with patch("pull_daily.summarize", return_value="- Task A done"):
-                with patch("pull_daily.asana_format", return_value="raw asana data"):
+            with patch("pull_daily.filter_items", return_value=([{"name": "Task A", "gid": "T1"}], [])):
+                with patch("pull_daily.format_filtered", return_value="- Task A done"):
                     import pull_daily
                     pull_daily.run(config, dry_run=False)
 
     from datetime import date
     log_file = log_dir / f"{date.today().isoformat()}.md"
     content = log_file.read_text()
-    # Asana section written, Slack section left as-is from template (not written)
     assert "- Task A done" in content
 
 
-def test_claude_failure_writes_failure_marker(tmp_path):
+def test_slack_claude_failure_writes_failure_marker(tmp_path):
     log_dir = tmp_path / "logs"
     log_dir.mkdir()
     template = tmp_path / "template.md"
     template.write_text("### Slack\n-\n\n### Asana\n-\n")
 
     config = {
-        "anthropic_api_key": "key",
-        "slack_bot_token": "token",
-        "slack_user_id": "U1",
-        "slack_channels": ["C1"],
-        "asana_pat": "pat",
-        "asana_workspace_gid": "WS1",
-        "log_dir": str(log_dir),
-        "template_path": str(template),
-        "obsidian_vault_path": "",
+        "anthropic_api_key": "key", "slack_bot_token": "token", "slack_user_id": "U1",
+        "slack_channels": ["C1"], "asana_pat": "pat", "asana_workspace_gid": "WS1",
+        "typesafe_api_key": "ts-key",
+        "log_dir": str(log_dir), "template_path": str(template), "obsidian_vault_path": "",
     }
 
     with patch("pull_daily.fetch_today_slack", return_value={"channels": [], "dms": []}):
         with patch("pull_daily.fetch_today_asana", return_value={"completed_tasks": [], "comments": []}):
             with patch("pull_daily.summarize", side_effect=Exception("Claude down")):
                 with patch("pull_daily.slack_format", return_value="raw slack"):
-                    with patch("pull_daily.asana_format", return_value="raw asana"):
+                    import pull_daily
+                    pull_daily.run(config, dry_run=False)
+
+    from datetime import date
+    log_file = log_dir / f"{date.today().isoformat()}.md"
+    content = log_file.read_text()
+    assert "_Summarization failed — run manually_" in content
+
+
+def test_asana_filter_failure_writes_failure_marker(tmp_path):
+    log_dir = tmp_path / "logs"
+    log_dir.mkdir()
+    template = tmp_path / "template.md"
+    template.write_text("### Slack\n-\n\n### Asana\n-\n")
+
+    config = {
+        "anthropic_api_key": "key", "slack_bot_token": "token", "slack_user_id": "U1",
+        "slack_channels": ["C1"], "asana_pat": "pat", "asana_workspace_gid": "WS1",
+        "typesafe_api_key": "ts-key",
+        "log_dir": str(log_dir), "template_path": str(template), "obsidian_vault_path": "",
+    }
+
+    with patch("pull_daily.fetch_today_slack", return_value={"channels": [], "dms": []}):
+        with patch("pull_daily.fetch_today_asana", return_value={"completed_tasks": [{"name": "A", "gid": "T1"}], "comments": []}):
+            with patch("pull_daily.filter_items", side_effect=Exception("TypeSafe down")):
+                with patch("pull_daily.slack_format", return_value="raw slack"):
+                    with patch("pull_daily.summarize", return_value="- ok"):
                         import pull_daily
                         pull_daily.run(config, dry_run=False)
 
     from datetime import date
     log_file = log_dir / f"{date.today().isoformat()}.md"
     content = log_file.read_text()
-    assert "_Summarization failed — run manually_" in content
+    assert "_Filtering failed — run manually_" in content
 
 
 def test_dry_run_does_not_write_log(tmp_path):
@@ -140,6 +156,7 @@ def test_dry_run_does_not_write_log(tmp_path):
         "slack_channels": ["C1"],
         "asana_pat": "pat",
         "asana_workspace_gid": "WS1",
+        "typesafe_api_key": "ts-key",
         "log_dir": str(log_dir),
         "template_path": str(template),
         "obsidian_vault_path": "",
@@ -149,7 +166,7 @@ def test_dry_run_does_not_write_log(tmp_path):
         with patch("pull_daily.fetch_today_asana", return_value={"completed_tasks": [], "comments": []}):
             with patch("pull_daily.summarize", return_value="- summary"):
                 with patch("pull_daily.slack_format", return_value="raw"):
-                    with patch("pull_daily.asana_format", return_value="raw"):
+                    with patch("pull_daily.filter_items", return_value=([], [])):
                         import pull_daily
                         pull_daily.run(config, dry_run=True)
 
@@ -163,14 +180,15 @@ def test_run_passes_directory_to_slack_format(tmp_path):
     config = {
         "anthropic_api_key": "key", "slack_bot_token": "token", "slack_user_id": "U1",
         "slack_channels": ["C1"], "slack_channel_names": {}, "asana_pat": "pat",
-        "asana_workspace_gid": "WS1", "log_dir": str(log_dir), "template_path": str(template),
+        "asana_workspace_gid": "WS1", "typesafe_api_key": "ts-key", "log_dir": str(log_dir),
+        "template_path": str(template),
         "obsidian_vault_path": "",
     }
     with patch("pull_daily.fetch_today_slack", return_value={"channels": [], "dms": []}), \
          patch("pull_daily.fetch_today_asana", return_value={"completed_tasks": [], "comments": []}), \
          patch("pull_daily.summarize", return_value="- ok"), \
          patch("pull_daily.slack_format") as mock_slack_format, \
-         patch("pull_daily.asana_format", return_value="raw"), \
+         patch("pull_daily.filter_items", return_value=([], [])), \
          patch("pull_daily.build_web_client"), \
          patch("pull_daily.SlackUserDirectory") as mock_dir:
         mock_slack_format.return_value = "raw slack"

@@ -67,7 +67,7 @@ All settings live in `.env` (copy from `.env.example`):
 
 ## Prompts
 
-`prompts/slack_summarize.md` and `prompts/asana_filter.md` control what Claude extracts from each source. Edit them to tune output without touching code.
+`prompts/slack_summarize.md` controls what Claude extracts from Slack. Edit it to tune output without touching code. Asana items are filtered via TypeSafe's Jev API instead of a prompt (see `asana_filter.py`).
 
 ## Future: Cron
 
