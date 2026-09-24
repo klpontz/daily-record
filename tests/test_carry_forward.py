@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from carry_forward import load_state, save_state
+from carry_forward import load_state, save_state, extract_tomorrow_items
 
 
 def test_load_state_missing_file_returns_empty(tmp_path):
@@ -16,3 +16,22 @@ def test_save_state_then_load_state_round_trips(tmp_path):
     result = load_state(path)
 
     assert result == state
+
+
+def test_extract_tomorrow_items_pulls_unchecked_lines():
+    text = (
+        "### Tomorrow\n"
+        "- [ ] Call Albert Hu\n"
+        "- [x] Already done, should not appear\n"
+        "- [ ] Follow up with Brian's email\n"
+    )
+    assert extract_tomorrow_items(text) == ["Call Albert Hu", "Follow up with Brian's email"]
+
+
+def test_extract_tomorrow_items_skips_blank_checkbox():
+    text = "### Tomorrow\n- [ ] \n- [ ] Real item\n"
+    assert extract_tomorrow_items(text) == ["Real item"]
+
+
+def test_extract_tomorrow_items_missing_section_returns_empty():
+    assert extract_tomorrow_items("### Plan\n- [ ] something\n") == []
