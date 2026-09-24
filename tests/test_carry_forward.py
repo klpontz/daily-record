@@ -39,6 +39,14 @@ def test_extract_tomorrow_items_missing_section_returns_empty():
     assert extract_tomorrow_items("### Plan\n- [ ] something\n") == []
 
 
+def test_match_items_no_today_items_returns_empty_without_api_call():
+    with patch("carry_forward.TypeSafeClient") as mock_class:
+        result = match_items("key", [], [{"id": "x", "text": "open item"}])
+
+    assert result == {}
+    mock_class.assert_not_called()
+
+
 def test_match_items_no_open_items_marks_everything_new_without_api_call():
     with patch("carry_forward.TypeSafeClient") as mock_class:
         result = match_items("key", ["Call Albert Hu"], [])
