@@ -45,6 +45,8 @@ def test_filter_items_embeds_each_item_text_in_its_own_question():
         filter_items("key", tasks, [])
 
     call_args = mock_client.system_one.call_args
+    # Regression test: state must be empty dict, not None (API rejects None with 422)
+    assert call_args.args[0] == {}
     questions = call_args.args[1]
     assert questions["task_0"].instructions["item"]["name"] == "Task A"
     assert questions["task_1"].instructions["item"]["name"] == "Task B"
