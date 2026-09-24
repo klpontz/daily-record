@@ -21,7 +21,7 @@ def summarize(api_key: str, prompt_path: str, data: str) -> str:
 
     message = client.messages.create(
         model="claude-haiku-4-5-20251001",
-        max_tokens=1024,  # sufficient for daily summary output
+        max_tokens=4096,
         messages=[
             {
                 "role": "user",
@@ -29,4 +29,8 @@ def summarize(api_key: str, prompt_path: str, data: str) -> str:
             }
         ]
     )
+    if message.stop_reason == "max_tokens":
+        raise RuntimeError(
+            "Claude response hit the max_tokens limit and was truncated mid-output"
+        )
     return message.content[0].text

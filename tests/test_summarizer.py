@@ -60,6 +60,23 @@ def test_summarize_uses_haiku_model(tmp_path):
     assert call_kwargs["model"] == "claude-haiku-4-5-20251001"
 
 
+def test_summarize_raises_when_response_was_truncated(tmp_path):
+    prompt_file = tmp_path / "prompt.md"
+    prompt_file.write_text("prompt")
+
+    mock_response = MagicMock()
+    mock_response.content = [MagicMock(text="- #training: Kevin said the thing was cut")]
+    mock_response.stop_reason = "max_tokens"
+
+    with patch("summarizer.anthropic.Anthropic") as mock_class:
+        mock_client = MagicMock()
+        mock_class.return_value = mock_client
+        mock_client.messages.create.return_value = mock_response
+
+        with pytest.raises(RuntimeError, match="max_tokens"):
+            summarize("key", str(prompt_file), "data")
+
+
 def test_summarize_passes_api_key(tmp_path):
     prompt_file = tmp_path / "prompt.md"
     prompt_file.write_text("prompt")
