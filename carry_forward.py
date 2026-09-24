@@ -1,7 +1,13 @@
+import argparse
 import json
+import os
+import sys
 import uuid
 from datetime import date
 from pathlib import Path
+
+from dotenv import load_dotenv
+
 from log_writer import read_section
 from typesafe_sdk import Choice, Noul, TypeSafeClient
 
@@ -158,3 +164,58 @@ def format_carry_report(state: dict, today: str, match_log: list[dict]) -> str:
     if match_lines:
         return "\n".join(match_lines) + "\n\n" + "\n".join(report_lines)
     return "\n".join(report_lines)
+
+
+def main(argv: list[str] | None = None) -> int:
+    load_dotenv()
+    argv = argv if argv is not None else sys.argv[1:]
+    parser = argparse.ArgumentParser(description="Track carry-forward Tomorrow items across days.")
+    parser.add_argument("log_path", type=Path)
+    parser.add_argument("--state", type=Path, default=None, help="Defaults to <LOG_DIR>/.carry-forward.json")
+    args = parser.parse_args(argv)
+
+    try:
+        today = date.fromisoformat(args.log_path.stem)
+    except ValueError:
+        print(f"Could not parse a date from log filename: {args.log_path.stem}", file=sys.stderr)
+        return 1
+
+    state_path = args.state or (Path(os.environ["LOG_DIR"]) / ".carry-forward.json")
+    state = load_state(state_path)
+
+    last_seen_dates = [item["last_seen"] for item in state["items"]]
+    if last_seen_dates and today.isoformat() < max(last_seen_dates):
+        print(
+            f"Refusing to run: log date {today.isoformat()} is older than the newest "
+            f"tracked date {max(last_seen_dates)}.",
+            file=sys.stderr,
+        )
+        return 1
+
+    log_text = args.log_path.read_text()
+    today_items = extract_tomorrow_items(log_text)
+    open_items = [item for item in state["items"] if not item["resolved"]]
+
+    try:
+        api_key = os.environ["TYPESAFE_API_KEY"]
+        matches = match_items(api_key, today_items, open_items)
+        unmatched = [text for text, m in matches.items() if m["matched_id"] is None]
+        non_recurring, _recurring = filter_recurring(api_key, unmatched)
+    except Exception as e:
+        print(f"Carry-forward matching failed: {e}", file=sys.stderr)
+        return 1
+
+    state = update_state(state, today.isoformat(), today_items, matches, non_recurring)
+    save_state(state_path, state)
+
+    items_by_id = {item["id"]: item["text"] for item in state["items"]}
+    match_log = [
+        {"today_text": text, "matched_text": items_by_id.get(m["matched_id"], "?"), "confidence": m["confidence"]}
+        for text, m in matches.items() if m["matched_id"] is not None
+    ]
+    print(format_carry_report(state, today.isoformat(), match_log))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

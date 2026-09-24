@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 import pytest
-from carry_forward import load_state, save_state, extract_tomorrow_items, match_items, filter_recurring, update_state, format_carry_report
+from carry_forward import load_state, save_state, extract_tomorrow_items, match_items, filter_recurring, update_state, format_carry_report, main
 
 
 def test_load_state_missing_file_returns_empty(tmp_path):
@@ -265,3 +265,78 @@ def test_format_carry_report_shows_match_decisions():
     result = format_carry_report(state, "2026-09-24", match_log)
 
     assert "matched: 'Call Albert Hu — send two slots' -> 'Call Albert Hu' (confidence 0.91)" in result
+
+
+def test_main_refuses_to_run_on_a_log_older_than_tracked_state(tmp_path, capsys):
+    log_file = tmp_path / "2026-09-20.md"  # older than the state file's newest last_seen
+    log_file.write_text("### Tomorrow\n- [ ] Something\n")
+    state_path = tmp_path / ".carry-forward.json"
+    state_path.write_text(json.dumps({"items": [
+        {"id": "abc", "text": "Existing", "first_seen": "2026-09-16", "last_seen": "2026-09-23",
+         "resolved": False, "resolved_date": None},
+    ]}))
+
+    with patch.dict("carry_forward.os.environ", {"TYPESAFE_API_KEY": "ts-key"}):
+        exit_code = main([str(log_file), "--state", str(state_path)])
+
+    assert exit_code == 1
+    assert "older than" in capsys.readouterr().err
+
+
+def test_main_runs_full_cycle_and_persists_state(tmp_path):
+    log_file = tmp_path / "2026-09-24.md"
+    log_file.write_text("### Tomorrow\n- [ ] Call Albert Hu\n")
+    state_path = tmp_path / ".carry-forward.json"
+
+    with patch("carry_forward.TypeSafeClient") as mock_class:
+        mock_client = MagicMock()
+        mock_class.return_value = mock_client
+        # match_items skips the API call (no open items yet); filter_recurring is the only real call.
+        mock_client.system_one.return_value = _mock_noul_result({"cand_0": 0.1})
+
+        with patch.dict("carry_forward.os.environ", {"TYPESAFE_API_KEY": "ts-key"}):
+            exit_code = main([str(log_file), "--state", str(state_path)])
+
+    assert exit_code == 0
+    assert state_path.exists()
+    saved = json.loads(state_path.read_text())
+    assert saved["items"][0]["text"] == "Call Albert Hu"
+    assert saved["items"][0]["first_seen"] == "2026-09-24"
+
+
+def test_main_api_failure_prints_clear_message_and_exits_1(tmp_path, capsys):
+    log_file = tmp_path / "2026-09-24.md"
+    log_file.write_text("### Tomorrow\n- [ ] Something\n")
+    state_path = tmp_path / ".carry-forward.json"
+
+    with patch("carry_forward.TypeSafeClient") as mock_class:
+        mock_client = MagicMock()
+        mock_class.return_value = mock_client
+        mock_client.system_one.side_effect = Exception("TypeSafe down")
+
+        with patch.dict("carry_forward.os.environ", {"TYPESAFE_API_KEY": "ts-key"}):
+            exit_code = main([str(log_file), "--state", str(state_path)])
+
+    assert exit_code == 1
+    assert "Carry-forward matching failed" in capsys.readouterr().err
+    assert not state_path.exists()  # never got to save_state
+
+
+def test_main_empty_tomorrow_does_not_resolve_existing_items(tmp_path):
+    """End-to-end regression test for the empty-day resolution bug."""
+    log_file = tmp_path / "2026-09-24.md"
+    log_file.write_text("### Tomorrow\n- [ ] \n")
+    state_path = tmp_path / ".carry-forward.json"
+    state_path.write_text(json.dumps({"items": [
+        {"id": "abc", "text": "Old open item", "first_seen": "2026-09-10", "last_seen": "2026-09-23",
+         "resolved": False, "resolved_date": None},
+    ]}))
+
+    with patch.dict("carry_forward.os.environ", {"TYPESAFE_API_KEY": "ts-key"}):
+        exit_code = main([str(log_file), "--state", str(state_path)])
+
+    assert exit_code == 0
+    saved = json.loads(state_path.read_text())
+    item = saved["items"][0]
+    assert item["resolved"] is False
+    assert "Old open item — open 14 days" in format_carry_report(saved, "2026-09-24", [])
