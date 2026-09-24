@@ -40,7 +40,7 @@ def _headers(pat: str) -> dict:
     return {"Authorization": f"Bearer {pat}"}
 
 
-def _project_name(task: dict) -> str | None:
+def project_name(task: dict) -> str | None:
     """Return the first project name a task belongs to, or None."""
     memberships = task.get("memberships") or []
     if memberships:
@@ -90,7 +90,7 @@ def _fetch_my_comments(session, pat, workspace_gid, today) -> list:
             ):
                 comments.append({
                     "task": task["name"],
-                    "project": _project_name(task),
+                    "project": project_name(task),
                     "comment": story.get("text", ""),
                 })
     return comments
@@ -115,7 +115,7 @@ def format_for_prompt(data: dict) -> str:
     if data["completed_tasks"]:
         lines.append("## Completed Tasks")
         for task in data["completed_tasks"]:
-            project = _project_name(task)
+            project = project_name(task)
             suffix = f" (project: {project})" if project else ""
             lines.append(f"- {task['name']}{suffix}")
 
