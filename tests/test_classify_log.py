@@ -1,6 +1,6 @@
 from unittest.mock import MagicMock, patch
 import pytest
-from classify_log import extract_bullets, classify_items
+from classify_log import extract_bullets, classify_items, format_breakdown
 
 
 def test_classify_items_empty_makes_no_api_call():
@@ -79,3 +79,43 @@ def test_extract_bullets_empty_log_returns_empty_list():
 
 def test_extract_bullets_missing_done_section_returns_empty_list():
     assert extract_bullets("### Plan\n- a\n") == []
+
+
+def test_format_breakdown_groups_and_computes_percentages():
+    items = [
+        {"text": "Debugged the DFEO bug", "category": "product_qa", "confidence": 0.95},
+        {"text": "Wrote the questionnaire spec", "category": "product_qa", "confidence": 0.9},
+        {"text": "Coached Ajmal in the 1:1", "category": "ops_transferable", "confidence": 0.8},
+        {"text": "Monitored the hiring inbox", "category": "ops_noise", "confidence": 0.85},
+    ]
+
+    result = format_breakdown(items)
+
+    assert "- Product/QA (~50%):" in result
+    assert "    Debugged the DFEO bug" in result
+    assert "    Wrote the questionnaire spec" in result
+    assert "- Ops (transferable, ~25%):" in result
+    assert "    Coached Ajmal in the 1:1" in result
+    assert "- Ops (noise, ~25%):" in result
+    assert "    Monitored the hiring inbox" in result
+
+
+def test_format_breakdown_flags_low_confidence_items():
+    items = [{"text": "Ambiguous item", "category": "ops_transferable", "confidence": 0.45}]
+
+    result = format_breakdown(items)
+
+    assert "    Ambiguous item (low confidence — check by hand)" in result
+
+
+def test_format_breakdown_shows_zero_percent_categories():
+    items = [{"text": "Only product work", "category": "product_qa", "confidence": 0.9}]
+
+    result = format_breakdown(items)
+
+    assert "- Ops (transferable, ~0%):" in result
+    assert "- Ops (noise, ~0%):" in result
+
+
+def test_format_breakdown_empty_returns_no_items_message():
+    assert format_breakdown([]) == "No items to classify."

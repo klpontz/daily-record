@@ -56,3 +56,30 @@ def classify_items(api_key: str, items: list[str]) -> list[dict]:
         }
         for i, item in enumerate(items)
     ]
+
+
+CATEGORY_ORDER = ["product_qa", "ops_transferable", "ops_noise"]
+LOW_CONFIDENCE = 0.6
+
+
+def _header(category: str, pct: int) -> str:
+    if category == "product_qa":
+        return f"- Product/QA (~{pct}%):"
+    qualifier = "transferable" if category == "ops_transferable" else "noise"
+    return f"- Ops ({qualifier}, ~{pct}%):"
+
+
+def format_breakdown(classified_items: list[dict]) -> str:
+    if not classified_items:
+        return "No items to classify."
+
+    total = len(classified_items)
+    lines = [f"({total} Done entries, by count — not effort-weighted)", ""]
+    for category in CATEGORY_ORDER:
+        items_in_category = [i for i in classified_items if i["category"] == category]
+        pct = round(100 * len(items_in_category) / total)
+        lines.append(_header(category, pct))
+        for item in items_in_category:
+            suffix = " (low confidence — check by hand)" if item["confidence"] < LOW_CONFIDENCE else ""
+            lines.append(f"    {item['text']}{suffix}")
+    return "\n".join(lines).rstrip()
