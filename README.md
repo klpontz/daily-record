@@ -33,6 +33,31 @@ pull-daily           # fetch, summarize, write to today's log
 pull-daily --dry-run # preview output without writing
 ```
 
+## Classifying a day's Breakdown
+
+`classify_log.py` reads a career-coach log file, classifies each `### Done` bullet into
+Product/QA, Ops (transferable), or Ops (noise) via a Jev Choice call, and prints a markdown
+Breakdown block with computed percentages. Percentages are a bullet count, not
+effort-weighted — a grounding reference for the hand-written Review, not a replacement for it.
+
+    python3 classify_log.py /path/to/logs/2026-09-24.md
+
+Requires `TYPESAFE_API_KEY` in `.env`. Writes nothing to disk — read the stdout output directly.
+
+## Tracking carry-forward items
+
+`carry_forward.py` matches today's `### Tomorrow` checklist against a running list of
+previously-open items (tracked in `.carry-forward.json` next to your logs, git-tracked), via
+a Jev Choice call, and prints a days-open report with each match decision shown. Recurring or
+standing items (meetings, routine monitoring) are filtered out via a Jev Noul before tracking,
+so they don't accumulate a misleading day-count.
+
+    python3 carry_forward.py /path/to/logs/2026-09-24.md [--state /path/to/logs/.carry-forward.json]
+
+Requires `TYPESAFE_API_KEY` in `.env`. `--state` defaults to `<LOG_DIR>/.carry-forward.json`.
+The tool derives "today" from the log's filename, not the system clock — always pass the log
+for the day you actually want tracked, and run it in date order.
+
 ## Slack App Setup
 
 1. Go to `api.slack.com/apps` → Create New App
