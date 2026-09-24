@@ -99,6 +99,38 @@ def test_match_items_downgrades_low_confidence_match_to_new():
     assert result["Vaguely similar item"]["matched_id"] is None
 
 
+def test_match_items_downgrade_records_downgraded_from():
+    """Fix 2: a downgraded low-confidence match must carry what it would have matched."""
+    open_items = [{"id": "abc123", "text": "Call Albert Hu"}]
+
+    with patch("carry_forward.TypeSafeClient") as mock_class:
+        mock_client = MagicMock()
+        mock_class.return_value = mock_client
+        mock_client.system_one.return_value = _mock_choice_result({"today_0": ("abc123", 0.3)})
+
+        result = match_items("key", ["Vaguely similar item"], open_items)
+
+    entry = result["Vaguely similar item"]
+    assert entry["matched_id"] is None
+    assert entry["downgraded_from"] == {"id": "abc123", "text": "Call Albert Hu"}
+
+
+def test_match_items_genuine_new_item_has_no_downgraded_from():
+    """Fix 2: a raw 'new' choice (no downgrade) must not carry downgraded_from."""
+    open_items = [{"id": "abc123", "text": "Call Albert Hu"}]
+
+    with patch("carry_forward.TypeSafeClient") as mock_class:
+        mock_client = MagicMock()
+        mock_class.return_value = mock_client
+        mock_client.system_one.return_value = _mock_choice_result({"today_0": ("new", 0.98)})
+
+        result = match_items("key", ["Totally new item"], open_items)
+
+    entry = result["Totally new item"]
+    assert entry["matched_id"] is None
+    assert entry.get("downgraded_from") is None
+
+
 def test_match_items_raises_on_api_failure():
     with patch("carry_forward.TypeSafeClient") as mock_class:
         mock_client = MagicMock()
@@ -320,6 +352,172 @@ def test_main_api_failure_prints_clear_message_and_exits_1(tmp_path, capsys):
     assert exit_code == 1
     assert "Carry-forward matching failed" in capsys.readouterr().err
     assert not state_path.exists()  # never got to save_state
+
+
+def test_main_refuses_on_old_log_when_resolved_date_is_the_newest_tracked_date(tmp_path, capsys):
+    """Fix 4: the out-of-order guard must also consider resolved_date, not just last_seen.
+
+    All tracked items are resolved with a resolved_date newer than the incoming
+    log's date, but last_seen alone (the old guard) would not catch this.
+    """
+    log_file = tmp_path / "2026-09-15.md"
+    log_file.write_text("### Tomorrow\n- [ ] Something\n")
+    state_path = tmp_path / ".carry-forward.json"
+    state_path.write_text(json.dumps({"items": [
+        {"id": "abc", "text": "Old item", "first_seen": "2026-09-01", "last_seen": "2026-09-10",
+         "resolved": True, "resolved_date": "2026-09-20"},
+    ]}))
+
+    with patch.dict("carry_forward.os.environ", {"TYPESAFE_API_KEY": "ts-key"}):
+        exit_code = main([str(log_file), "--state", str(state_path)])
+
+    assert exit_code == 1
+    assert "older than" in capsys.readouterr().err
+
+
+def test_main_prints_downgrade_line_for_low_confidence_match(tmp_path, capsys):
+    """Fix 2: main() must print a downgrade line before the report."""
+    log_file = tmp_path / "2026-09-24.md"
+    log_file.write_text("### Tomorrow\n- [ ] Vaguely similar item\n")
+    state_path = tmp_path / ".carry-forward.json"
+    state_path.write_text(json.dumps({"items": [
+        {"id": "abc123", "text": "Call Albert Hu", "first_seen": "2026-09-16",
+         "last_seen": "2026-09-23", "resolved": False, "resolved_date": None},
+    ]}))
+
+    with patch("carry_forward.TypeSafeClient") as mock_class:
+        mock_client = MagicMock()
+        mock_class.return_value = mock_client
+        # First call: match_items (low-confidence match -> downgrade).
+        # Second call: filter_recurring, for the now-unmatched item.
+        mock_client.system_one.side_effect = [
+            _mock_choice_result({"today_0": ("abc123", 0.3)}),
+            _mock_noul_result({"cand_0": 0.1}),
+        ]
+
+        with patch.dict("carry_forward.os.environ", {"TYPESAFE_API_KEY": "ts-key"}):
+            exit_code = main([str(log_file), "--state", str(state_path)])
+
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert (
+        "low confidence, treated as new: 'Vaguely similar item' "
+        "(closest: 'Call Albert Hu', 0.30)"
+    ) in out
+
+
+def test_main_prints_resolution_line_when_item_resolved(tmp_path, capsys):
+    """Fix 2: main() must announce items the resolution sweep just resolved."""
+    log_file = tmp_path / "2026-09-24.md"
+    log_file.write_text("### Tomorrow\n- [ ] Something totally different\n")
+    state_path = tmp_path / ".carry-forward.json"
+    state_path.write_text(json.dumps({"items": [
+        {"id": "abc123", "text": "Old open item", "first_seen": "2026-09-10",
+         "last_seen": "2026-09-23", "resolved": False, "resolved_date": None},
+    ]}))
+
+    with patch("carry_forward.TypeSafeClient") as mock_class:
+        mock_client = MagicMock()
+        mock_class.return_value = mock_client
+        mock_client.system_one.side_effect = [
+            _mock_choice_result({"today_0": ("new", 0.98)}),
+            _mock_noul_result({"cand_0": 0.1}),
+        ]
+
+        with patch.dict("carry_forward.os.environ", {"TYPESAFE_API_KEY": "ts-key"}):
+            exit_code = main([str(log_file), "--state", str(state_path)])
+
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "resolved today: 'Old open item' (was open 14 days)" in out
+
+
+def test_main_missing_api_key_prints_clear_message(tmp_path, capsys):
+    """Fix 3: a missing TYPESAFE_API_KEY must produce a config-specific message, not a raw KeyError."""
+    log_file = tmp_path / "2026-09-24.md"
+    log_file.write_text("### Tomorrow\n- [ ] Something\n")
+
+    with patch("carry_forward.load_dotenv"):
+        with patch.dict("carry_forward.os.environ", {}, clear=True):
+            exit_code = main([str(log_file)])
+
+    assert exit_code == 1
+    assert "TYPESAFE_API_KEY is not set" in capsys.readouterr().err
+
+
+def test_main_missing_log_dir_without_state_flag_prints_clear_message(tmp_path, capsys):
+    """Fix 3: a missing LOG_DIR (no --state given) must not raise a raw KeyError."""
+    log_file = tmp_path / "2026-09-24.md"
+    log_file.write_text("### Tomorrow\n- [ ] Something\n")
+
+    with patch("carry_forward.load_dotenv"):
+        with patch.dict("carry_forward.os.environ", {"TYPESAFE_API_KEY": "ts-key"}, clear=True):
+            exit_code = main([str(log_file)])
+
+    assert exit_code == 1
+    assert "LOG_DIR is not set" in capsys.readouterr().err
+
+
+def test_main_nonexistent_log_path_returns_1_with_clear_message(tmp_path, capsys):
+    """Fix 3: a bad log path must not raise a raw FileNotFoundError."""
+    state_path = tmp_path / ".carry-forward.json"
+    nonexistent = tmp_path / "2026-09-24.md"  # never created
+
+    with patch.dict("carry_forward.os.environ", {"TYPESAFE_API_KEY": "ts-key"}):
+        exit_code = main([str(nonexistent), "--state", str(state_path)])
+
+    assert exit_code == 1
+    assert "Could not read log file" in capsys.readouterr().err
+
+
+def test_main_corrupt_state_file_returns_1_with_clear_message(tmp_path, capsys):
+    """Fix 3: corrupt JSON in the state file must not raise a raw JSONDecodeError."""
+    log_file = tmp_path / "2026-09-24.md"
+    log_file.write_text("### Tomorrow\n- [ ] Something\n")
+    state_path = tmp_path / ".carry-forward.json"
+    state_path.write_text("{not valid json")
+
+    with patch.dict("carry_forward.os.environ", {"TYPESAFE_API_KEY": "ts-key"}):
+        exit_code = main([str(log_file), "--state", str(state_path)])
+
+    assert exit_code == 1
+    assert "Could not read carry-forward state file" in capsys.readouterr().err
+
+
+def test_main_save_state_failure_returns_1_with_clear_message(tmp_path, capsys):
+    """Fix 3: a failed write must not raise a raw exception past main()."""
+    log_file = tmp_path / "2026-09-24.md"
+    log_file.write_text("### Tomorrow\n- [ ] Call Albert Hu\n")
+    state_path = tmp_path / ".carry-forward.json"
+
+    with patch("carry_forward.TypeSafeClient") as mock_class:
+        mock_client = MagicMock()
+        mock_class.return_value = mock_client
+        mock_client.system_one.return_value = _mock_noul_result({"cand_0": 0.1})
+
+        with patch("carry_forward.save_state", side_effect=OSError("disk full")):
+            with patch.dict("carry_forward.os.environ", {"TYPESAFE_API_KEY": "ts-key"}):
+                exit_code = main([str(log_file), "--state", str(state_path)])
+
+    assert exit_code == 1
+    assert "Could not save carry-forward state" in capsys.readouterr().err
+
+
+def test_save_state_atomic_write_leaves_original_untouched_on_failure(tmp_path):
+    """Fix 6: a mid-write failure must not corrupt the existing state file."""
+    path = tmp_path / ".carry-forward.json"
+    original = {"items": [{"id": "abc", "text": "Original", "first_seen": "2026-09-01",
+                            "last_seen": "2026-09-01", "resolved": False, "resolved_date": None}]}
+    save_state(path, original)
+
+    with patch("carry_forward.json.dumps", side_effect=OSError("simulated mid-write failure")):
+        with pytest.raises(OSError):
+            save_state(path, {"items": []})
+
+    # Original file is untouched, and no stray temp file was left behind.
+    assert load_state(path) == original
+    leftovers = list(tmp_path.glob(".*.tmp"))
+    assert leftovers == []
 
 
 def test_main_empty_tomorrow_does_not_resolve_existing_items(tmp_path):
