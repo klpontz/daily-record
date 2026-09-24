@@ -11,7 +11,7 @@ def test_load_state_missing_file_returns_empty(tmp_path):
 
 def test_save_state_then_load_state_round_trips(tmp_path):
     path = tmp_path / ".carry-forward.json"
-    state = {"items": [{"id": "abc123", "text": "Call Albert Hu", "first_seen": "2026-09-16",
+    state = {"items": [{"id": "abc123", "text": "Call Sam Rivera", "first_seen": "2026-09-16",
                         "last_seen": "2026-09-23", "resolved": False, "resolved_date": None}]}
 
     save_state(path, state)
@@ -23,11 +23,11 @@ def test_save_state_then_load_state_round_trips(tmp_path):
 def test_extract_tomorrow_items_pulls_unchecked_lines():
     text = (
         "### Tomorrow\n"
-        "- [ ] Call Albert Hu\n"
+        "- [ ] Call Sam Rivera\n"
         "- [x] Already done, should not appear\n"
-        "- [ ] Follow up with Brian's email\n"
+        "- [ ] Follow up with Jordan's email\n"
     )
-    assert extract_tomorrow_items(text) == ["Call Albert Hu", "Follow up with Brian's email"]
+    assert extract_tomorrow_items(text) == ["Call Sam Rivera", "Follow up with Jordan's email"]
 
 
 def test_extract_tomorrow_items_skips_blank_checkbox():
@@ -49,9 +49,9 @@ def test_match_items_no_today_items_returns_empty_without_api_call():
 
 def test_match_items_no_open_items_marks_everything_new_without_api_call():
     with patch("carry_forward.TypeSafeClient") as mock_class:
-        result = match_items("key", ["Call Albert Hu"], [])
+        result = match_items("key", ["Call Sam Rivera"], [])
 
-    assert result == {"Call Albert Hu": {"matched_id": None, "confidence": 1.0}}
+    assert result == {"Call Sam Rivera": {"matched_id": None, "confidence": 1.0}}
     mock_class.assert_not_called()
 
 
@@ -68,8 +68,8 @@ def _mock_noul_result(nouls: dict[str, float]):
 
 
 def test_match_items_returns_matched_id_and_confidence():
-    open_items = [{"id": "abc123", "text": "Call Albert Hu"}]
-    today_items = ["Call Albert Hu — send two time slots", "Write the outage post-mortem"]
+    open_items = [{"id": "abc123", "text": "Call Sam Rivera"}]
+    today_items = ["Call Sam Rivera — send two time slots", "Write the outage post-mortem"]
 
     with patch("carry_forward.TypeSafeClient") as mock_class:
         mock_client = MagicMock()
@@ -81,13 +81,13 @@ def test_match_items_returns_matched_id_and_confidence():
         result = match_items("key", today_items, open_items)
 
     assert result == {
-        "Call Albert Hu — send two time slots": {"matched_id": "abc123", "confidence": 0.91},
+        "Call Sam Rivera — send two time slots": {"matched_id": "abc123", "confidence": 0.91},
         "Write the outage post-mortem": {"matched_id": None, "confidence": 0.98},
     }
 
 
 def test_match_items_downgrades_low_confidence_match_to_new():
-    open_items = [{"id": "abc123", "text": "Call Albert Hu"}]
+    open_items = [{"id": "abc123", "text": "Call Sam Rivera"}]
 
     with patch("carry_forward.TypeSafeClient") as mock_class:
         mock_client = MagicMock()
@@ -101,7 +101,7 @@ def test_match_items_downgrades_low_confidence_match_to_new():
 
 def test_match_items_downgrade_records_downgraded_from():
     """Fix 2: a downgraded low-confidence match must carry what it would have matched."""
-    open_items = [{"id": "abc123", "text": "Call Albert Hu"}]
+    open_items = [{"id": "abc123", "text": "Call Sam Rivera"}]
 
     with patch("carry_forward.TypeSafeClient") as mock_class:
         mock_client = MagicMock()
@@ -112,12 +112,12 @@ def test_match_items_downgrade_records_downgraded_from():
 
     entry = result["Vaguely similar item"]
     assert entry["matched_id"] is None
-    assert entry["downgraded_from"] == {"id": "abc123", "text": "Call Albert Hu"}
+    assert entry["downgraded_from"] == {"id": "abc123", "text": "Call Sam Rivera"}
 
 
 def test_match_items_genuine_new_item_has_no_downgraded_from():
     """Fix 2: a raw 'new' choice (no downgrade) must not carry downgraded_from."""
-    open_items = [{"id": "abc123", "text": "Call Albert Hu"}]
+    open_items = [{"id": "abc123", "text": "Call Sam Rivera"}]
 
     with patch("carry_forward.TypeSafeClient") as mock_class:
         mock_client = MagicMock()
@@ -150,7 +150,7 @@ def test_filter_recurring_empty_makes_no_api_call():
 
 
 def test_filter_recurring_splits_by_threshold():
-    candidates = ["Call Albert Hu", "Sales and Ops meeting"]
+    candidates = ["Call Sam Rivera", "Sales and Ops meeting"]
 
     with patch("carry_forward.TypeSafeClient") as mock_class:
         mock_client = MagicMock()
@@ -159,20 +159,20 @@ def test_filter_recurring_splits_by_threshold():
 
         non_recurring, recurring = filter_recurring("key", candidates)
 
-    assert non_recurring == ["Call Albert Hu"]
+    assert non_recurring == ["Call Sam Rivera"]
     assert recurring == ["Sales and Ops meeting"]
 
 
 def test_update_state_adds_new_item_and_does_not_mutate_input():
     state = {"items": []}
-    matches = {"Call Albert Hu": {"matched_id": None, "confidence": 1.0}}
+    matches = {"Call Sam Rivera": {"matched_id": None, "confidence": 1.0}}
 
-    result = update_state(state, "2026-09-24", ["Call Albert Hu"], matches, ["Call Albert Hu"])
+    result = update_state(state, "2026-09-24", ["Call Sam Rivera"], matches, ["Call Sam Rivera"])
 
     assert state == {"items": []}  # input untouched
     assert len(result["items"]) == 1
     item = result["items"][0]
-    assert item["text"] == "Call Albert Hu"
+    assert item["text"] == "Call Sam Rivera"
     assert item["first_seen"] == "2026-09-24"
     assert item["last_seen"] == "2026-09-24"
     assert item["resolved"] is False
@@ -181,11 +181,11 @@ def test_update_state_adds_new_item_and_does_not_mutate_input():
 
 
 def test_update_state_bumps_last_seen_on_match():
-    state = {"items": [{"id": "abc123", "text": "Call Albert Hu", "first_seen": "2026-09-16",
+    state = {"items": [{"id": "abc123", "text": "Call Sam Rivera", "first_seen": "2026-09-16",
                         "last_seen": "2026-09-23", "resolved": False, "resolved_date": None}]}
-    matches = {"Call Albert Hu again": {"matched_id": "abc123", "confidence": 0.9}}
+    matches = {"Call Sam Rivera again": {"matched_id": "abc123", "confidence": 0.9}}
 
-    result = update_state(state, "2026-09-24", ["Call Albert Hu again"], matches, [])
+    result = update_state(state, "2026-09-24", ["Call Sam Rivera again"], matches, [])
 
     item = result["items"][0]
     assert item["id"] == "abc123"
@@ -195,7 +195,7 @@ def test_update_state_bumps_last_seen_on_match():
 
 
 def test_update_state_resolves_items_not_matched_today():
-    state = {"items": [{"id": "abc123", "text": "Call Albert Hu", "first_seen": "2026-09-16",
+    state = {"items": [{"id": "abc123", "text": "Call Sam Rivera", "first_seen": "2026-09-16",
                         "last_seen": "2026-09-23", "resolved": False, "resolved_date": None}]}
 
     result = update_state(state, "2026-09-24", ["Something unrelated"],
@@ -210,7 +210,7 @@ def test_update_state_resolves_items_not_matched_today():
 def test_update_state_empty_today_items_does_not_resolve_anything():
     """Regression test for the bug the first draft shipped: an empty or
     unfilled Tomorrow section must not wipe every tracked item's history."""
-    state = {"items": [{"id": "abc123", "text": "Call Albert Hu", "first_seen": "2026-09-16",
+    state = {"items": [{"id": "abc123", "text": "Call Sam Rivera", "first_seen": "2026-09-16",
                         "last_seen": "2026-09-23", "resolved": False, "resolved_date": None}]}
 
     result = update_state(state, "2026-09-24", [], {}, [])
@@ -289,14 +289,14 @@ def test_format_carry_report_no_open_items():
 
 
 def test_format_carry_report_shows_match_decisions():
-    state = {"items": [{"id": "abc", "text": "Call Albert Hu", "first_seen": "2026-09-16",
+    state = {"items": [{"id": "abc", "text": "Call Sam Rivera", "first_seen": "2026-09-16",
                         "last_seen": "2026-09-24", "resolved": False, "resolved_date": None}]}
-    match_log = [{"today_text": "Call Albert Hu — send two slots", "matched_text": "Call Albert Hu",
+    match_log = [{"today_text": "Call Sam Rivera — send two slots", "matched_text": "Call Sam Rivera",
                   "confidence": 0.91}]
 
     result = format_carry_report(state, "2026-09-24", match_log)
 
-    assert "matched: 'Call Albert Hu — send two slots' -> 'Call Albert Hu' (confidence 0.91)" in result
+    assert "matched: 'Call Sam Rivera — send two slots' -> 'Call Sam Rivera' (confidence 0.91)" in result
 
 
 def test_main_refuses_to_run_on_a_log_older_than_tracked_state(tmp_path, capsys):
@@ -317,7 +317,7 @@ def test_main_refuses_to_run_on_a_log_older_than_tracked_state(tmp_path, capsys)
 
 def test_main_runs_full_cycle_and_persists_state(tmp_path):
     log_file = tmp_path / "2026-09-24.md"
-    log_file.write_text("### Tomorrow\n- [ ] Call Albert Hu\n")
+    log_file.write_text("### Tomorrow\n- [ ] Call Sam Rivera\n")
     state_path = tmp_path / ".carry-forward.json"
 
     with patch("carry_forward.TypeSafeClient") as mock_class:
@@ -332,7 +332,7 @@ def test_main_runs_full_cycle_and_persists_state(tmp_path):
     assert exit_code == 0
     assert state_path.exists()
     saved = json.loads(state_path.read_text())
-    assert saved["items"][0]["text"] == "Call Albert Hu"
+    assert saved["items"][0]["text"] == "Call Sam Rivera"
     assert saved["items"][0]["first_seen"] == "2026-09-24"
 
 
@@ -381,7 +381,7 @@ def test_main_prints_downgrade_line_for_low_confidence_match(tmp_path, capsys):
     log_file.write_text("### Tomorrow\n- [ ] Vaguely similar item\n")
     state_path = tmp_path / ".carry-forward.json"
     state_path.write_text(json.dumps({"items": [
-        {"id": "abc123", "text": "Call Albert Hu", "first_seen": "2026-09-16",
+        {"id": "abc123", "text": "Call Sam Rivera", "first_seen": "2026-09-16",
          "last_seen": "2026-09-23", "resolved": False, "resolved_date": None},
     ]}))
 
@@ -402,7 +402,7 @@ def test_main_prints_downgrade_line_for_low_confidence_match(tmp_path, capsys):
     out = capsys.readouterr().out
     assert (
         "low confidence, treated as new: 'Vaguely similar item' "
-        "(closest: 'Call Albert Hu', 0.30)"
+        "(closest: 'Call Sam Rivera', 0.30)"
     ) in out
 
 
@@ -487,7 +487,7 @@ def test_main_corrupt_state_file_returns_1_with_clear_message(tmp_path, capsys):
 def test_main_save_state_failure_returns_1_with_clear_message(tmp_path, capsys):
     """Fix 3: a failed write must not raise a raw exception past main()."""
     log_file = tmp_path / "2026-09-24.md"
-    log_file.write_text("### Tomorrow\n- [ ] Call Albert Hu\n")
+    log_file.write_text("### Tomorrow\n- [ ] Call Sam Rivera\n")
     state_path = tmp_path / ".carry-forward.json"
 
     with patch("carry_forward.TypeSafeClient") as mock_class:

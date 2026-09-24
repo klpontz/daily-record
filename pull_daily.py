@@ -59,7 +59,7 @@ def _parse_channel_names(raw: str) -> dict:
     """Parse SLACK_CHANNEL_NAMES env var into a dict.
 
     Format: comma-separated id:name pairs, e.g.
-        C6BDPLG8N:general,C065854RB8A:announcements
+        C0000GENERAL:general,C0000ANNOUNCE:announcements
     """
     mapping = {}
     for pair in raw.split(","):

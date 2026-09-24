@@ -10,7 +10,7 @@ Three places in the daily-record → career-coach pipeline currently do a classi
 
 1. **Asana filtering** (`asana_filter.md` prompt) asks Claude to decide which completed tasks/comments are "real work" vs. noise, *and* format the survivors as bullets — in one free-text call, over data that's already fully structured.
 2. **The daily review's Breakdown percentages** (Product/QA vs. Ops-transferable vs. Ops-noise) are eyeballed by whoever writes the review, reading the whole day holistically. There's no per-item record of why an item landed in a bucket.
-3. **Carry-forward tracking** ("this item has been open since Sep 16") is done by hand, rereading the last 7-10 logs' Review sections and matching reworded lines by eye. Wording drift ("Call Albert Hu" vs. "Follow up with Brian's email") makes this slow and easy to miss.
+3. **Carry-forward tracking** ("this item has been open since Sep 16") is done by hand, rereading the last 7-10 logs' Review sections and matching reworded lines by eye. Wording drift ("Call Sam Rivera" vs. "Follow up with Jordan's email") makes this slow and easy to miss.
 
 [TypeSafe's Jev](https://docs.typesafe.ai/introduction) returns typed judgments (a yes/no probability, a category, a score) instead of generated text. All three problems above are judgment calls over already-structured or already-written text — a better fit for a typed primitive than a free-text prompt-and-parse call.
 
@@ -102,7 +102,7 @@ New file `carry_forward.py`, state file `<LOG_DIR>/.carry-forward.json` (git-tra
 ```json
 {
   "items": [
-    {"id": "a1b2c3d4", "text": "Call Albert Hu", "first_seen": "2026-09-16", "last_seen": "2026-09-23", "resolved": false, "resolved_date": null}
+    {"id": "a1b2c3d4", "text": "Call Sam Rivera", "first_seen": "2026-09-16", "last_seen": "2026-09-23", "resolved": false, "resolved_date": null}
   ]
 }
 ```

@@ -96,13 +96,13 @@ A small, isolated ID→name resolver — one class, one caller (the formatter re
 
   ```
   ## Channel Threads
-  [#training] Helen Wang: I don't see how syncing next-grade is useful for us.
+  [#training] the CEO: I don't see how syncing next-grade is useful for us.
     You: Agreed it's not a reference point on its own…
-    Juan Chen: what about pre-enrolled specifically?
+    the Director of Product: what about pre-enrolled specifically?
 
   ## Direct Messages
-  [DM with Anand Puthumanappully]
-    Anand Puthumanappully: Fresno wants 300+ sign-ins bulk-deleted
+  [DM with a support teammate]
+    a support teammate: a district wants 300+ sign-ins bulk-deleted
     You: let me confirm with the expanded-learning team first
   ```
 - Removes the `YOU` / `CONTEXT` / `> YOU` prefixes in favor of real names; "You" for the user.
@@ -112,7 +112,7 @@ A small, isolated ID→name resolver — one class, one caller (the formatter re
 - Rewrite so the summarizer **names each participant and what they said/decided/asked**, rather than collapsing to "a decision was made."
 - Update the input-format description (attributed `Name: text` lines, no more `YOU:`/`CONTEXT:`).
 - New example output demonstrating attributed prose, e.g.:
-  `**#training** — Helen Wang questioned whether next-grade helps pre-enrolled students; you traced the mechanism, conceded it doesn't fix the year-mismatch, and redirected to district enter date. Juan Chen asked about summer-session handling.`
+  `**#training** — the CEO questioned whether next-grade helps pre-enrolled students; you traced the mechanism, conceded it doesn't fix the year-mismatch, and redirected to district enter date. the Director of Product asked about summer-session handling.`
 - Keep: drop pure acknowledgements/emoji, group by thread/topic, factual (no coaching), the no-activity sentinel.
 
 ---

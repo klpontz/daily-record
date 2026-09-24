@@ -85,7 +85,7 @@ def test_format_breakdown_groups_and_computes_percentages():
     items = [
         {"text": "Debugged the DFEO bug", "category": "product_qa", "confidence": 0.95},
         {"text": "Wrote the questionnaire spec", "category": "product_qa", "confidence": 0.9},
-        {"text": "Coached Ajmal in the 1:1", "category": "ops_transferable", "confidence": 0.8},
+        {"text": "Coached a report in the 1:1", "category": "ops_transferable", "confidence": 0.8},
         {"text": "Monitored the hiring inbox", "category": "ops_noise", "confidence": 0.85},
     ]
 
@@ -95,7 +95,7 @@ def test_format_breakdown_groups_and_computes_percentages():
     assert "    Debugged the DFEO bug" in result
     assert "    Wrote the questionnaire spec" in result
     assert "- Ops (transferable, ~25%):" in result
-    assert "    Coached Ajmal in the 1:1" in result
+    assert "    Coached a report in the 1:1" in result
     assert "- Ops (noise, ~25%):" in result
     assert "    Monitored the hiring inbox" in result
 

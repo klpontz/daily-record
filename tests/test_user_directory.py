@@ -20,11 +20,11 @@ def _client(members=None, info=None, list_error=None, info_error=None):
 
 def test_resolves_names_from_bulk_list(tmp_path):
     c = _client(members=[
-        {"id": "U1", "profile": {"real_name": "Helen Wang"}},
-        {"id": "U2", "profile": {"real_name": "Juan Chen"}},
+        {"id": "U1", "profile": {"real_name": "the CEO"}},
+        {"id": "U2", "profile": {"real_name": "the Director of Product"}},
     ])
     d = SlackUserDirectory(c, own_id="U9", cache_path=tmp_path / "u.json")
-    assert d.resolve_many(["U1", "U2"]) == {"U1": "Helen Wang", "U2": "Juan Chen"}
+    assert d.resolve_many(["U1", "U2"]) == {"U1": "the CEO", "U2": "the Director of Product"}
 
 
 def test_own_id_renders_as_you(tmp_path):
@@ -44,7 +44,7 @@ def test_name_preference_chain(tmp_path):
 
 
 def test_lazy_lookup_for_id_absent_from_bulk(tmp_path):
-    c = _client(members=[{"id": "U1", "profile": {"real_name": "Helen"}}],
+    c = _client(members=[{"id": "U1", "profile": {"real_name": "the CEO"}}],
                 info={"id": "U2", "profile": {"real_name": "New Hire"}})
     d = SlackUserDirectory(c, own_id="U9", cache_path=tmp_path / "u.json")
     assert d.resolve_many(["U2"]) == {"U2": "New Hire"}
@@ -90,10 +90,10 @@ def test_corrupt_cache_treated_as_miss(tmp_path):
 
 def test_bulk_load_writes_cache_atomically(tmp_path):
     cache = tmp_path / "u.json"
-    c = _client(members=[{"id": "U1", "profile": {"real_name": "Helen"}}])
+    c = _client(members=[{"id": "U1", "profile": {"real_name": "the CEO"}}])
     d = SlackUserDirectory(c, own_id="U9", cache_path=cache)
     d.resolve_many(["U1"])
-    assert json.loads(cache.read_text())["U1"] == "Helen"
+    assert json.loads(cache.read_text())["U1"] == "the CEO"
     assert not (tmp_path / "u.tmp").exists()  # temp file cleaned up by os.replace
 
 
@@ -109,7 +109,7 @@ def test_transport_error_on_bulk_load_degrades_to_raw_ids(tmp_path, capsys):
 def test_transport_error_on_lazy_lookup_degrades_to_raw_id(tmp_path):
     import ssl
     # bulk load succeeds but U2 is absent -> lazy users_info hits a transport drop
-    c = _client(members=[{"id": "U1", "profile": {"real_name": "Helen"}}])
+    c = _client(members=[{"id": "U1", "profile": {"real_name": "the CEO"}}])
     c.users_info.side_effect = ssl.SSLError("eof")
     d = SlackUserDirectory(c, own_id="U9", cache_path=tmp_path / "u.json")
     assert d.resolve_many(["U2"]) == {"U2": "U2"}  # raw id, no raise

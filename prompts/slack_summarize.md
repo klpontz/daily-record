@@ -22,14 +22,14 @@ Format:
 - DM with Firstname Lastname: same shape for direct messages.
 
 Example output:
-- #client-success: Kevin worked with Ash Croft and Ajmal Bakhtari to respond to Kimberly of Downey regarding data not syncing from Q.
-- #client-success: Anand Puthumanappully flagged Fresno's request to bulk-delete 300+ sign-ins, and Kevin committed to confirming with the expanded-learning team first.
-- #client-success: Nicole Duran signed off on pausing the all-sites sync until the July 30 rollover.
-- #training: Helen Wang questioned whether next-grade helps pre-enrolled students, and Kevin traced the mechanism, conceded it does not fix the year-mismatch, and redirected to district enter date.
-- #training: Juan Chen asked how summer sessions are handled under the same rule.
-- #client-success: Ajmal Bakhtari reported that Downey's parent updates were not reaching 6crickets, and over a long thread Kevin directed him to call Kimberly before emailing, rewrote the draft to ask for specific divergences rather than general questions, required screenshots of each student, and had him confirm the screenshots rendered in Gmail before sending. The call surfaced that 30 parents had contacted Kimberly since Friday.
-- DM with Anand Puthumanappully: Anand, on tech-support shift, asked Kevin to cover the Marci reply, and Kevin agreed.
+- #client-success: Kevin worked with Rae Lindquist and Tomas Vieira to answer a district contact about data not syncing from the SIS.
+- #client-success: Priya Raman flagged a district request to bulk-delete 300+ sign-ins, and Kevin committed to confirming with the expanded-learning team first.
+- #client-success: Bea Okafor signed off on pausing the all-sites sync until the July 30 rollover.
+- #training: Dana Whitfield questioned whether next-grade helps pre-enrolled students, and Kevin traced the mechanism, conceded it does not fix the year-mismatch, and redirected to district enter date.
+- #training: Marco Ruiz asked how summer sessions are handled under the same rule.
+- #client-success: Tomas Vieira reported that a district's parent updates were not reaching the platform, and over a long thread Kevin directed him to call the district before emailing, rewrote the draft to ask for specific divergences rather than general questions, required screenshots of each student, and had him confirm the screenshots rendered in Gmail before sending.
+- DM with Priya Raman: Priya, on tech-support shift, asked Kevin to cover an outstanding reply, and Kevin agreed.
 
-Two things to copy from this sample. The separate #client-success and #training bullets are different topics in the same channel — one bullet each, every one carrying its channel. The Downey bullet is the opposite case: roughly a dozen messages between three people about a single problem, compressed into **one** bullet, not one bullet per reply.
+The names above are placeholders. Two things to copy from this sample. The separate #client-success and #training bullets are different topics in the same channel — one bullet each, every one carrying its channel. The Tomas Vieira sync bullet is the opposite case: roughly a dozen messages between three people about a single problem, compressed into **one** bullet, not one bullet per reply.
 
 If there is no meaningful activity, output exactly: _No notable Slack activity today_

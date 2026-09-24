@@ -191,7 +191,7 @@ def test_dm_without_user_message_excluded():
 def test_format_attributes_names_via_directory():
     from unittest.mock import MagicMock
     directory = MagicMock()
-    directory.resolve_many.return_value = {"U123": "You", "U999": "Helen Wang"}
+    directory.resolve_many.return_value = {"U123": "You", "U999": "the CEO"}
     data = {
         "channels": [{
             "channel_id": "C001",
@@ -202,28 +202,28 @@ def test_format_attributes_names_via_directory():
         "dms": [],
     }
     result = format_for_prompt(data, channel_names={"C001": "training"}, directory=directory)
-    assert "[#training] Helen Wang: next-grade isn't useful" in result
+    assert "[#training] the CEO: next-grade isn't useful" in result
     assert "You: agreed, it's not a reference point" in result
 
 
 def test_format_dm_attributes_both_sides():
     from unittest.mock import MagicMock
     directory = MagicMock()
-    directory.resolve_many.return_value = {"U123": "You", "U777": "Anand Puthumanappully"}
+    directory.resolve_many.return_value = {"U123": "You", "U777": "a support teammate"}
     data = {
         "channels": [],
         "dms": [{
             "channel_id": "D1",
             "partner_id": "U777",
             "messages": [
-                {"user_id": "U777", "text": "Fresno wants bulk deletes"},
+                {"user_id": "U777", "text": "a district wants bulk deletes"},
                 {"user_id": "U123", "text": "confirming with the team"},
             ],
         }],
     }
     result = format_for_prompt(data, directory=directory)
-    assert "[DM with Anand Puthumanappully]" in result
-    assert "Anand Puthumanappully: Fresno wants bulk deletes" in result
+    assert "[DM with a support teammate]" in result
+    assert "a support teammate: a district wants bulk deletes" in result
     assert "You: confirming with the team" in result
 
 

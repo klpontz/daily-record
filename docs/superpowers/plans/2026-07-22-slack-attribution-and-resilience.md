@@ -582,11 +582,11 @@ def _client(members=None, info=None, list_error=None, info_error=None):
 
 def test_resolves_names_from_bulk_list(tmp_path):
     c = _client(members=[
-        {"id": "U1", "profile": {"real_name": "Helen Wang"}},
-        {"id": "U2", "profile": {"real_name": "Juan Chen"}},
+        {"id": "U1", "profile": {"real_name": "the CEO"}},
+        {"id": "U2", "profile": {"real_name": "the Director of Product"}},
     ])
     d = SlackUserDirectory(c, own_id="U9", cache_path=tmp_path / "u.json")
-    assert d.resolve_many(["U1", "U2"]) == {"U1": "Helen Wang", "U2": "Juan Chen"}
+    assert d.resolve_many(["U1", "U2"]) == {"U1": "the CEO", "U2": "the Director of Product"}
 
 
 def test_own_id_renders_as_you(tmp_path):
@@ -606,7 +606,7 @@ def test_name_preference_chain(tmp_path):
 
 
 def test_lazy_lookup_for_id_absent_from_bulk(tmp_path):
-    c = _client(members=[{"id": "U1", "profile": {"real_name": "Helen"}}],
+    c = _client(members=[{"id": "U1", "profile": {"real_name": "the CEO"}}],
                 info={"id": "U2", "profile": {"real_name": "New Hire"}})
     d = SlackUserDirectory(c, own_id="U9", cache_path=tmp_path / "u.json")
     assert d.resolve_many(["U2"]) == {"U2": "New Hire"}
@@ -652,10 +652,10 @@ def test_corrupt_cache_treated_as_miss(tmp_path):
 
 def test_bulk_load_writes_cache_atomically(tmp_path):
     cache = tmp_path / "u.json"
-    c = _client(members=[{"id": "U1", "profile": {"real_name": "Helen"}}])
+    c = _client(members=[{"id": "U1", "profile": {"real_name": "the CEO"}}])
     d = SlackUserDirectory(c, own_id="U9", cache_path=cache)
     d.resolve_many(["U1"])
-    assert json.loads(cache.read_text())["U1"] == "Helen"
+    assert json.loads(cache.read_text())["U1"] == "the CEO"
     assert not (tmp_path / "u.tmp").exists()  # temp file cleaned up by os.replace
 ```
 
@@ -1038,7 +1038,7 @@ git commit -m "feat: capture coworkers' words + chronological order in Slack fet
 def test_format_attributes_names_via_directory():
     from unittest.mock import MagicMock
     directory = MagicMock()
-    directory.resolve_many.return_value = {"U123": "You", "U999": "Helen Wang"}
+    directory.resolve_many.return_value = {"U123": "You", "U999": "the CEO"}
     data = {
         "channels": [{
             "channel_id": "C001",
@@ -1049,28 +1049,28 @@ def test_format_attributes_names_via_directory():
         "dms": [],
     }
     result = format_for_prompt(data, channel_names={"C001": "training"}, directory=directory)
-    assert "[#training] Helen Wang: next-grade isn't useful" in result
+    assert "[#training] the CEO: next-grade isn't useful" in result
     assert "You: agreed, it's not a reference point" in result
 
 
 def test_format_dm_attributes_both_sides():
     from unittest.mock import MagicMock
     directory = MagicMock()
-    directory.resolve_many.return_value = {"U123": "You", "U777": "Anand Puthumanappully"}
+    directory.resolve_many.return_value = {"U123": "You", "U777": "a support teammate"}
     data = {
         "channels": [],
         "dms": [{
             "channel_id": "D1",
             "partner_id": "U777",
             "messages": [
-                {"user_id": "U777", "text": "Fresno wants bulk deletes"},
+                {"user_id": "U777", "text": "a district wants bulk deletes"},
                 {"user_id": "U123", "text": "confirming with the team"},
             ],
         }],
     }
     result = format_for_prompt(data, directory=directory)
-    assert "[DM with Anand Puthumanappully]" in result
-    assert "Anand Puthumanappully: Fresno wants bulk deletes" in result
+    assert "[DM with a support teammate]" in result
+    assert "a support teammate: a district wants bulk deletes" in result
     assert "You: confirming with the team" in result
 
 
@@ -1284,9 +1284,9 @@ Format:
 - **channel or DM context**: who did/said what (lowercase, period at end, no brackets, no links).
 
 Example output:
-- **#training**: helen wang questioned whether next-grade helps pre-enrolled students; you traced the mechanism, conceded it doesn't fix the year-mismatch, and redirected to district enter date. juan chen asked about summer-session handling.
-- **DM with anand puthumanappully**: anand flagged fresno's request to bulk-delete 300+ sign-ins; you said you'd confirm with the expanded-learning team first.
-- **#client-success**: nicole duran signed off on pausing the all-sites sync until the july 30 rollover.
+- **#training**: the ceo questioned whether next-grade helps pre-enrolled students; you traced the mechanism, conceded it doesn't fix the year-mismatch, and redirected to district enter date. the director of product asked about summer-session handling.
+- **DM with a support teammate**: they flagged a district's request to bulk-delete 300+ sign-ins; you said you'd confirm with the expanded-learning team first.
+- **#client-success**: a colleague signed off on pausing the all-sites sync until the july 30 rollover.
 
 If there is no meaningful activity, output exactly: _No notable Slack activity today_
 ```
