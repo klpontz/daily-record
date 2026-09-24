@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import MagicMock, patch
-from asana_filter import filter_items
+from asana_filter import filter_items, format_filtered
 
 
 def test_filter_items_short_circuits_on_empty():
@@ -60,3 +60,27 @@ def test_filter_items_raises_on_api_failure():
 
         with pytest.raises(Exception, match="TypeSafe down"):
             filter_items("key", [{"name": "A", "gid": "T1"}], [])
+
+
+def test_format_filtered_renders_tasks_and_comments():
+    tasks = [{"name": "Student Kiosk Feature", "memberships": [{"project": {"name": "Help articles"}}]}]
+    comments = [{"task": "Family lock prototype", "project": "Feature QA", "comment": "left a decision"}]
+
+    result = format_filtered(tasks, comments)
+
+    assert "- **Help articles** — Student Kiosk Feature: marked complete." in result
+    assert "- **Feature QA** — Family lock prototype: left a decision" in result
+
+
+def test_format_filtered_falls_back_when_both_empty():
+    assert format_filtered([], []) == "_No notable Asana activity today_"
+
+
+def test_format_filtered_collapses_and_truncates_comment_text():
+    comments = [{"task": "T", "project": "P", "comment": "line one\n- inner bullet\nline three " + "x" * 250}]
+
+    result = format_filtered([], comments)
+
+    assert "\n" not in result.splitlines()[0]  # the whole bullet is one line
+    assert result.count("- ") == 1  # the inner "- inner bullet" did not become its own bullet
+    assert len(result) < 250

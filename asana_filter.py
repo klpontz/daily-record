@@ -1,3 +1,5 @@
+import re
+
 from asana_client import project_name
 from typesafe_sdk import Noul, TypeSafeClient
 
@@ -58,3 +60,34 @@ def filter_items(api_key: str, tasks: list[dict], comments: list[dict]) -> tuple
             print(f"dropped (noul={score:.2f}): {c['comment'][:60]}")
 
     return kept_tasks, kept_comments
+
+
+def format_filtered(tasks: list[dict], comments: list[dict]) -> str:
+    if not tasks and not comments:
+        return "_No notable Asana activity today_"
+
+    lines = []
+    for t in tasks:
+        project = project_name(t)
+        prefix = f"**{project}** — " if project else ""
+        lines.append(f"- {prefix}{t['name']}: marked complete.")
+    for c in comments:
+        project = c.get("project")
+        prefix = f"**{project}** — " if project else ""
+        lines.append(f"- {prefix}{c['task']}: {_clean_comment(c['comment'])}")
+    return "\n".join(lines)
+
+
+def _clean_comment(text: str, max_len: int = 200) -> str:
+    """Collapse whitespace/newlines and truncate — raw Asana story text can
+    span paragraphs or contain its own '- ' list, which would corrupt the
+    log's bullet structure and confuse classify_log.py's section parser."""
+    collapsed = " ".join(text.split())
+    # Remove " - " patterns (which were list items) to prevent confusion with bullets
+    collapsed = collapsed.replace(" - ", " ")
+    # Also handle case where text starts with "- "
+    if collapsed.startswith("- "):
+        collapsed = collapsed[2:]
+    if len(collapsed) > max_len:
+        return collapsed[:max_len].rstrip() + "…"
+    return collapsed
