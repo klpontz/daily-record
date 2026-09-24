@@ -1,4 +1,65 @@
-from classify_log import extract_bullets
+from unittest.mock import MagicMock, patch
+import pytest
+from classify_log import extract_bullets, classify_items
+
+
+def test_classify_items_empty_makes_no_api_call():
+    with patch("classify_log.TypeSafeClient") as mock_class:
+        result = classify_items("key", [])
+
+    assert result == []
+    mock_class.assert_not_called()
+
+
+def _mock_choice_result(answers: dict[str, tuple[str, float]]):
+    result = MagicMock()
+    result.choices = {k: MagicMock(choice=c, confidence=conf) for k, (c, conf) in answers.items()}
+    return result
+
+
+def test_classify_items_maps_category_and_confidence_per_item():
+    items = ["Debugged the DFEO bug", "Monitored the hiring inbox"]
+
+    with patch("classify_log.TypeSafeClient") as mock_class:
+        mock_client = MagicMock()
+        mock_class.return_value = mock_client
+        mock_client.system_one.return_value = _mock_choice_result(
+            {"item_0": ("product_qa", 0.95), "item_1": ("ops_noise", 0.4)}
+        )
+
+        result = classify_items("key", items)
+
+    assert result == [
+        {"text": "Debugged the DFEO bug", "category": "product_qa", "confidence": 0.95},
+        {"text": "Monitored the hiring inbox", "category": "ops_noise", "confidence": 0.4},
+    ]
+
+
+def test_classify_items_embeds_each_item_text_in_its_own_question():
+    items = ["First item text", "Second item text"]
+
+    with patch("classify_log.TypeSafeClient") as mock_class:
+        mock_client = MagicMock()
+        mock_class.return_value = mock_client
+        mock_client.system_one.return_value = _mock_choice_result(
+            {"item_0": ("product_qa", 0.9), "item_1": ("product_qa", 0.9)}
+        )
+
+        classify_items("key", items)
+
+    questions = mock_client.system_one.call_args.args[1]
+    assert questions["item_0"].instructions["item"] == "First item text"
+    assert questions["item_1"].instructions["item"] == "Second item text"
+
+
+def test_classify_items_raises_on_api_failure():
+    with patch("classify_log.TypeSafeClient") as mock_class:
+        mock_client = MagicMock()
+        mock_class.return_value = mock_client
+        mock_client.system_one.side_effect = Exception("TypeSafe down")
+
+        with pytest.raises(Exception, match="TypeSafe down"):
+            classify_items("key", ["some item"])
 
 
 def test_extract_bullets_pulls_from_done_only():
