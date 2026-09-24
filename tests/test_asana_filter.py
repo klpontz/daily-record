@@ -76,6 +76,17 @@ def test_format_filtered_falls_back_when_both_empty():
     assert format_filtered([], []) == "_No notable Asana activity today_"
 
 
+def test_format_filtered_reports_dropped_count_when_everything_filtered():
+    result = format_filtered([], [], dropped_count=3)
+    assert result == "_No notable Asana activity today_ (3 items filtered as noise)"
+
+
+def test_format_filtered_bare_fallback_when_genuinely_empty_input():
+    # dropped_count defaults to 0 when the input was empty to begin with —
+    # distinguishes "nothing happened" from "things happened but got filtered."
+    assert format_filtered([], [], dropped_count=0) == "_No notable Asana activity today_"
+
+
 def test_format_filtered_collapses_and_truncates_comment_text():
     comments = [{"task": "T", "project": "P", "comment": "line one\n- inner bullet\nline three " + "x" * 250}]
 

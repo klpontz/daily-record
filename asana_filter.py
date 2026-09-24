@@ -62,8 +62,10 @@ def filter_items(api_key: str, tasks: list[dict], comments: list[dict]) -> tuple
     return kept_tasks, kept_comments
 
 
-def format_filtered(tasks: list[dict], comments: list[dict]) -> str:
+def format_filtered(tasks: list[dict], comments: list[dict], dropped_count: int = 0) -> str:
     if not tasks and not comments:
+        if dropped_count > 0:
+            return f"_No notable Asana activity today_ ({dropped_count} items filtered as noise)"
         return "_No notable Asana activity today_"
 
     lines = []

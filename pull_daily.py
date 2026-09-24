@@ -129,7 +129,8 @@ def run(config: dict, dry_run: bool = False, debug: bool = False) -> dict:
                 asana_data["completed_tasks"],
                 asana_data["comments"],
             )
-            asana_content = format_filtered(kept_tasks, kept_comments)
+            dropped_count = asana_count - len(kept_tasks) - len(kept_comments)
+            asana_content = format_filtered(kept_tasks, kept_comments, dropped_count)
             asana_ok = True
         except Exception as e:
             print(f"⚠ Asana filtering failed: {e}")
