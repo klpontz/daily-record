@@ -82,12 +82,12 @@ def _clean_comment(text: str, max_len: int = 200) -> str:
     """Collapse whitespace/newlines and truncate — raw Asana story text can
     span paragraphs or contain its own '- ' list, which would corrupt the
     log's bullet structure and confuse classify_log.py's section parser."""
-    collapsed = " ".join(text.split())
-    # Remove " - " patterns (which were list items) to prevent confusion with bullets
-    collapsed = collapsed.replace(" - ", " ")
-    # Also handle case where text starts with "- "
-    if collapsed.startswith("- "):
-        collapsed = collapsed[2:]
+    # Strip leading list markers from each line before collapsing whitespace.
+    # This prevents markdown list syntax from corrupting the bullet structure
+    # while preserving legitimate mid-sentence hyphens.
+    lines = text.splitlines()
+    cleaned_lines = [re.sub(r'^\s*-\s+', '', line) for line in lines]
+    collapsed = " ".join(" ".join(cleaned_lines).split())
     if len(collapsed) > max_len:
         return collapsed[:max_len].rstrip() + "…"
     return collapsed

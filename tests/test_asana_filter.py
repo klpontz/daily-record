@@ -84,3 +84,13 @@ def test_format_filtered_collapses_and_truncates_comment_text():
     assert "\n" not in result.splitlines()[0]  # the whole bullet is one line
     assert result.count("- ") == 1  # the inner "- inner bullet" did not become its own bullet
     assert len(result) < 250
+
+
+def test_format_filtered_preserves_legitimate_hyphens():
+    """Verify that mid-sentence hyphens (punctuation) survive sanitization."""
+    comments = [{"task": "T", "project": "P", "comment": "Left a decision - go with option B for now"}]
+
+    result = format_filtered([], comments)
+
+    # The legitimate hyphen in "decision - go" should be preserved
+    assert "decision - go" in result
