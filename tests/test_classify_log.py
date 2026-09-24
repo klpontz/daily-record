@@ -148,6 +148,28 @@ def test_main_classifies_and_prints_breakdown(tmp_path, capsys):
     assert "- Product/QA (~100%):" in capsys.readouterr().out
 
 
+def test_main_nonexistent_log_path_returns_1_with_clear_message(capsys):
+    """Fix 3: a bad log path must not raise a raw FileNotFoundError."""
+    with patch.dict("classify_log.os.environ", {"TYPESAFE_API_KEY": "ts-key"}):
+        exit_code = main(["/nonexistent/path/2026-09-24.md"])
+
+    assert exit_code == 1
+    assert "Could not read log file" in capsys.readouterr().err
+
+
+def test_main_missing_api_key_prints_clear_message(tmp_path, capsys):
+    """Fix 3: a missing TYPESAFE_API_KEY must produce a config-specific message, not a raw KeyError."""
+    log_file = tmp_path / "2026-09-24.md"
+    log_file.write_text("### Done\n- Debugged the thing\n")
+
+    with patch("classify_log.load_dotenv"):
+        with patch.dict("classify_log.os.environ", {}, clear=True):
+            exit_code = main([str(log_file)])
+
+    assert exit_code == 1
+    assert "TYPESAFE_API_KEY is not set" in capsys.readouterr().err
+
+
 def test_main_api_failure_prints_clear_message_and_exits_1(tmp_path, capsys):
     log_file = tmp_path / "2026-09-24.md"
     log_file.write_text("### Done\n- Debugged the thing\n")

@@ -97,7 +97,16 @@ def main(argv: list[str] | None = None) -> int:
         print("Usage: python3 classify_log.py <path-to-log.md>")
         return 1
 
-    log_text = Path(argv[0]).read_text()
+    if "TYPESAFE_API_KEY" not in os.environ:
+        print("TYPESAFE_API_KEY is not set — add it to .env", file=sys.stderr)
+        return 1
+
+    try:
+        log_text = Path(argv[0]).read_text()
+    except Exception as e:
+        print(f"Could not read log file {argv[0]}: {e}", file=sys.stderr)
+        return 1
+
     items = extract_bullets(log_text)
     if not items:
         print(format_breakdown([]))
