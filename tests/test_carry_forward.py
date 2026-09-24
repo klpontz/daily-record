@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 import pytest
-from carry_forward import load_state, save_state, extract_tomorrow_items, match_items, filter_recurring
+from carry_forward import load_state, save_state, extract_tomorrow_items, match_items, filter_recurring, update_state
 
 
 def test_load_state_missing_file_returns_empty(tmp_path):
@@ -129,3 +129,82 @@ def test_filter_recurring_splits_by_threshold():
 
     assert non_recurring == ["Call Albert Hu"]
     assert recurring == ["Sales and Ops meeting"]
+
+
+def test_update_state_adds_new_item_and_does_not_mutate_input():
+    state = {"items": []}
+    matches = {"Call Albert Hu": {"matched_id": None, "confidence": 1.0}}
+
+    result = update_state(state, "2026-09-24", ["Call Albert Hu"], matches, ["Call Albert Hu"])
+
+    assert state == {"items": []}  # input untouched
+    assert len(result["items"]) == 1
+    item = result["items"][0]
+    assert item["text"] == "Call Albert Hu"
+    assert item["first_seen"] == "2026-09-24"
+    assert item["last_seen"] == "2026-09-24"
+    assert item["resolved"] is False
+    assert item["resolved_date"] is None
+    assert isinstance(item["id"], str) and item["id"]
+
+
+def test_update_state_bumps_last_seen_on_match():
+    state = {"items": [{"id": "abc123", "text": "Call Albert Hu", "first_seen": "2026-09-16",
+                        "last_seen": "2026-09-23", "resolved": False, "resolved_date": None}]}
+    matches = {"Call Albert Hu again": {"matched_id": "abc123", "confidence": 0.9}}
+
+    result = update_state(state, "2026-09-24", ["Call Albert Hu again"], matches, [])
+
+    item = result["items"][0]
+    assert item["id"] == "abc123"
+    assert item["first_seen"] == "2026-09-16"
+    assert item["last_seen"] == "2026-09-24"
+    assert item["resolved"] is False
+
+
+def test_update_state_resolves_items_not_matched_today():
+    state = {"items": [{"id": "abc123", "text": "Call Albert Hu", "first_seen": "2026-09-16",
+                        "last_seen": "2026-09-23", "resolved": False, "resolved_date": None}]}
+
+    result = update_state(state, "2026-09-24", ["Something unrelated"],
+                           {"Something unrelated": {"matched_id": None, "confidence": 1.0}},
+                           ["Something unrelated"])
+
+    item = next(i for i in result["items"] if i["id"] == "abc123")
+    assert item["resolved"] is True
+    assert item["resolved_date"] == "2026-09-24"
+
+
+def test_update_state_empty_today_items_does_not_resolve_anything():
+    """Regression test for the bug the first draft shipped: an empty or
+    unfilled Tomorrow section must not wipe every tracked item's history."""
+    state = {"items": [{"id": "abc123", "text": "Call Albert Hu", "first_seen": "2026-09-16",
+                        "last_seen": "2026-09-23", "resolved": False, "resolved_date": None}]}
+
+    result = update_state(state, "2026-09-24", [], {}, [])
+
+    item = result["items"][0]
+    assert item["resolved"] is False
+    assert item["resolved_date"] is None
+    assert item["last_seen"] == "2026-09-23"  # untouched
+
+
+def test_update_state_excludes_recurring_items_from_tracking():
+    result = update_state(
+        {"items": []}, "2026-09-24", ["Sales and Ops meeting"],
+        {"Sales and Ops meeting": {"matched_id": None, "confidence": 1.0}},
+        non_recurring_new_texts=[],  # filter_recurring judged it recurring, so it's not in this list
+    )
+
+    assert result["items"] == []
+
+
+def test_update_state_leaves_already_resolved_items_alone():
+    state = {"items": [{"id": "abc123", "text": "Old item", "first_seen": "2026-09-01",
+                        "last_seen": "2026-09-05", "resolved": True, "resolved_date": "2026-09-05"}]}
+
+    result = update_state(state, "2026-09-24", [], {}, [])
+
+    item = result["items"][0]
+    assert item["resolved"] is True
+    assert item["resolved_date"] == "2026-09-05"

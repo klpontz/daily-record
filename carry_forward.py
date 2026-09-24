@@ -1,4 +1,5 @@
 import json
+import uuid
 from pathlib import Path
 from log_writer import read_section
 from typesafe_sdk import Choice, Noul, TypeSafeClient
@@ -103,3 +104,33 @@ def filter_recurring(api_key: str, candidate_items: list[str]) -> tuple[list[str
         else:
             non_recurring.append(text)
     return non_recurring, recurring
+
+
+def update_state(state: dict, today: str, today_items: list[str], matches: dict[str, dict],
+                  non_recurring_new_texts: list[str]) -> dict:
+    items_by_id = {item["id"]: dict(item) for item in state["items"]}  # copy, don't mutate input
+    matched_ids = set()
+    non_recurring_set = set(non_recurring_new_texts)
+
+    for text in today_items:
+        match = matches.get(text, {"matched_id": None, "confidence": 0.0})
+        matched_id = match["matched_id"]
+        if matched_id is not None and matched_id in items_by_id:
+            items_by_id[matched_id]["last_seen"] = today
+            matched_ids.add(matched_id)
+        elif text in non_recurring_set:
+            new_id = uuid.uuid4().hex[:8]
+            items_by_id[new_id] = {
+                "id": new_id, "text": text, "first_seen": today, "last_seen": today,
+                "resolved": False, "resolved_date": None,
+            }
+            matched_ids.add(new_id)
+        # else: unmatched and filtered as recurring — never tracked.
+
+    if today_items:  # only resolve when today actually had items to compare against
+        for item_id, item in items_by_id.items():
+            if not item["resolved"] and item_id not in matched_ids:
+                item["resolved"] = True
+                item["resolved_date"] = today
+
+    return {"items": list(items_by_id.values())}
