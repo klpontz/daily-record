@@ -1,5 +1,6 @@
 import json
 import uuid
+from datetime import date
 from pathlib import Path
 from log_writer import read_section
 from typesafe_sdk import Choice, Noul, TypeSafeClient
@@ -134,3 +135,26 @@ def update_state(state: dict, today: str, today_items: list[str], matches: dict[
                 item["resolved_date"] = today
 
     return {"items": list(items_by_id.values())}
+
+
+def format_carry_report(state: dict, today: str, match_log: list[dict]) -> str:
+    match_lines = [
+        f"matched: '{m['today_text']}' -> '{m['matched_text']}' (confidence {m['confidence']:.2f})"
+        for m in match_log
+    ]
+
+    open_items = [item for item in state["items"] if not item["resolved"]]
+    if not open_items:
+        report_lines = ["No open items."]
+    else:
+        today_date = date.fromisoformat(today)
+        open_items = sorted(open_items, key=lambda item: item["first_seen"])
+        report_lines = []
+        for item in open_items:
+            days = (today_date - date.fromisoformat(item["first_seen"])).days
+            day_word = "day" if days == 1 else "days"
+            report_lines.append(f"{item['text']} — open {days} {day_word} (since {item['first_seen']})")
+
+    if match_lines:
+        return "\n".join(match_lines) + "\n\n" + "\n".join(report_lines)
+    return "\n".join(report_lines)

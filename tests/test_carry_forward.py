@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 import pytest
-from carry_forward import load_state, save_state, extract_tomorrow_items, match_items, filter_recurring, update_state
+from carry_forward import load_state, save_state, extract_tomorrow_items, match_items, filter_recurring, update_state, format_carry_report
 
 
 def test_load_state_missing_file_returns_empty(tmp_path):
@@ -223,3 +223,45 @@ def test_update_state_leaves_already_resolved_items_alone():
     # Unresolved item does get marked resolved by the sweep
     assert unresolved["resolved"] is True
     assert unresolved["resolved_date"] == "2026-09-24"
+
+
+def test_format_carry_report_sorts_oldest_first_and_excludes_resolved():
+    state = {"items": [
+        {"id": "a", "text": "Newer item", "first_seen": "2026-09-22", "last_seen": "2026-09-24",
+         "resolved": False, "resolved_date": None},
+        {"id": "b", "text": "Older item", "first_seen": "2026-09-16", "last_seen": "2026-09-24",
+         "resolved": False, "resolved_date": None},
+        {"id": "c", "text": "Resolved item", "first_seen": "2026-09-01", "last_seen": "2026-09-05",
+         "resolved": True, "resolved_date": "2026-09-05"},
+    ]}
+
+    result = format_carry_report(state, "2026-09-24", [])
+
+    lines = result.splitlines()
+    assert lines[0] == "Older item — open 8 days (since 2026-09-16)"
+    assert lines[1] == "Newer item — open 2 days (since 2026-09-22)"
+    assert "Resolved item" not in result
+
+
+def test_format_carry_report_singular_day():
+    state = {"items": [{"id": "a", "text": "Just started", "first_seen": "2026-09-23",
+                        "last_seen": "2026-09-24", "resolved": False, "resolved_date": None}]}
+
+    result = format_carry_report(state, "2026-09-24", [])
+
+    assert "Just started — open 1 day (since 2026-09-23)" in result
+
+
+def test_format_carry_report_no_open_items():
+    assert format_carry_report({"items": []}, "2026-09-24", []) == "No open items."
+
+
+def test_format_carry_report_shows_match_decisions():
+    state = {"items": [{"id": "abc", "text": "Call Albert Hu", "first_seen": "2026-09-16",
+                        "last_seen": "2026-09-24", "resolved": False, "resolved_date": None}]}
+    match_log = [{"today_text": "Call Albert Hu — send two slots", "matched_text": "Call Albert Hu",
+                  "confidence": 0.91}]
+
+    result = format_carry_report(state, "2026-09-24", match_log)
+
+    assert "matched: 'Call Albert Hu — send two slots' -> 'Call Albert Hu' (confidence 0.91)" in result
