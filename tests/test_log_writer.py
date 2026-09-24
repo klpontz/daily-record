@@ -1,7 +1,7 @@
 import pytest
 from pathlib import Path
 from datetime import date
-from log_writer import get_log_path, overwrite_section, write_log
+from log_writer import get_log_path, overwrite_section, write_log, read_section
 
 SAMPLE_LOG = """### Plan
 - [ ] do something
@@ -110,3 +110,18 @@ def test_overwrite_section_is_idempotent_with_same_content():
     result2 = overwrite_section(result1, "Slack", "- stable content")
     assert result1 == result2
     assert result2.count("### Slack") == 1
+
+
+def test_read_section_extracts_middle_section():
+    text = "### Plan\n- a\n\n### Done\n- b\n- c\n\n### Slack\n-\n"
+    assert read_section(text, "Done") == "- b\n- c"
+
+
+def test_read_section_handles_zero_content_section_without_bleeding_into_next():
+    text = "### Done\n### Slack\n- x\n### Asana\n- y\n"
+    assert read_section(text, "Done") == ""
+    assert read_section(text, "Slack") == "- x"
+
+
+def test_read_section_missing_returns_empty_string():
+    assert read_section("### Plan\n- a\n", "Done") == ""

@@ -9,6 +9,23 @@ def get_log_path(log_dir: str, target_date: date = None) -> Path:
     return Path(log_dir) / f"{target_date.isoformat()}.md"
 
 
+def read_section(text: str, section_name: str) -> str:
+    """Return the raw content under a ### section header, stripped. '' if not found or empty.
+
+    Locates every '### ' header by position first, then slices strictly
+    between two consecutive header positions — avoids the lazy-match/
+    lookahead bug in overwrite_section, which mis-captures when a section
+    has zero content before the next header.
+    """
+    headers = list(re.finditer(r'^### (.+)$', text, flags=re.MULTILINE))
+    for i, match in enumerate(headers):
+        if match.group(1).strip() == section_name:
+            start = match.end()
+            end = headers[i + 1].start() if i + 1 < len(headers) else len(text)
+            return text[start:end].strip()
+    return ""
+
+
 def overwrite_section(text: str, section_name: str, new_content: str) -> str:
     """Replace content under a ### section header, preserving all other sections.
 
