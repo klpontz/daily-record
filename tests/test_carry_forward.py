@@ -200,11 +200,26 @@ def test_update_state_excludes_recurring_items_from_tracking():
 
 
 def test_update_state_leaves_already_resolved_items_alone():
-    state = {"items": [{"id": "abc123", "text": "Old item", "first_seen": "2026-09-01",
-                        "last_seen": "2026-09-05", "resolved": True, "resolved_date": "2026-09-05"}]}
+    """Regression test: during a real sweep (non-empty today_items), already-resolved
+    items are never touched. Also exercises the sweep with actual state changes."""
+    state = {"items": [
+        {"id": "resolved_item", "text": "Old item", "first_seen": "2026-09-01",
+         "last_seen": "2026-09-05", "resolved": True, "resolved_date": "2026-09-05"},
+        {"id": "unresolved_item", "text": "Pending item", "first_seen": "2026-09-16",
+         "last_seen": "2026-09-23", "resolved": False, "resolved_date": None},
+    ]}
 
-    result = update_state(state, "2026-09-24", [], {}, [])
+    result = update_state(state, "2026-09-24", ["New unrelated item"],
+                           {"New unrelated item": {"matched_id": None, "confidence": 1.0}},
+                           ["New unrelated item"])
 
-    item = result["items"][0]
-    assert item["resolved"] is True
-    assert item["resolved_date"] == "2026-09-05"
+    resolved = next(i for i in result["items"] if i["id"] == "resolved_item")
+    unresolved = next(i for i in result["items"] if i["id"] == "unresolved_item")
+
+    # Already-resolved item is untouched, not re-marked with today's date
+    assert resolved["resolved"] is True
+    assert resolved["resolved_date"] == "2026-09-05"
+
+    # Unresolved item does get marked resolved by the sweep
+    assert unresolved["resolved"] is True
+    assert unresolved["resolved_date"] == "2026-09-24"
