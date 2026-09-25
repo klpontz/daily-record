@@ -67,9 +67,12 @@ def _get_my_gid(session, pat) -> str:
 
 def _fetch_my_comments(session, pat, workspace_gid, today) -> list:
     user_gid = _get_my_gid(session, pat)
-    params = {"modified_on.after": today, "opt_fields": "name,gid,memberships.project.name", "limit": 100}
+    params = {"modified_on.after": today, "opt_fields": "name,gid,notes,memberships.project.name", "limit": 100}
     data = _get_json(session, f"{ASANA_BASE}/workspaces/{workspace_gid}/tasks/search", pat, params)
     tasks = data.get("data", [])
+    if len(tasks) >= params["limit"]:
+        # tasks/search has no next page — anything past the cap is never seen.
+        print(f"⚠ Asana search hit the {params['limit']}-task cap — some of today's comments may be missing")
 
     comments = []
     for task in tasks:
@@ -80,20 +83,34 @@ def _fetch_my_comments(session, pat, workspace_gid, today) -> list:
             )
         except TRANSPORT_ERRORS:
             continue  # one bad task must not kill the whole pull
-        for story in stories.get("data", []):
-            if not story:
-                continue
+        thread = [st for st in stories.get("data", []) if st and st.get("type") == "comment"]
+        for i, story in enumerate(thread):
             if (
-                story.get("type") == "comment"
-                and (story.get("created_by") or {}).get("gid") == user_gid
+                (story.get("created_by") or {}).get("gid") == user_gid
                 and story.get("created_at", "").startswith(today)
             ):
                 comments.append({
                     "task": task["name"],
                     "project": project_name(task),
                     "comment": story.get("text", ""),
+                    # Context for the filter: what was asked, and what the comment answers.
+                    "task_description": _clip(task.get("notes") or "", 800),
+                    "prior_comments": [
+                        {
+                            "author": "log owner" if (p.get("created_by") or {}).get("gid") == user_gid else "teammate",
+                            "comment": _clip(p.get("text", ""), 300),
+                        }
+                        for p in thread[max(0, i - 4):i]
+                    ],
                 })
     return comments
+
+
+def _clip(text: str, max_len: int) -> str:
+    collapsed = " ".join(text.split())
+    if len(collapsed) > max_len:
+        return collapsed[:max_len] + "…"
+    return collapsed
 
 
 def fetch_today_asana(pat, workspace_gid) -> dict:

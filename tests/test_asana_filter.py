@@ -105,3 +105,51 @@ def test_format_filtered_preserves_legitimate_hyphens():
 
     # The legitimate hyphen in "decision - go" should be preserved
     assert "decision - go" in result
+
+
+def test_filter_items_drop_line_names_task_and_prints_full_comment(capsys):
+    # Sep 24 regression: the drop line showed 60 chars and no task name,
+    # so a dropped approval could not be found from the output.
+    long_comment = "Apologies for the delay. This looks great.\nJust need an Applies to table and you are ready to publish."
+    comments = [{"task": "When I login, I see my kids for pickup", "project": None, "comment": long_comment}]
+
+    with patch("asana_filter.TypeSafeClient") as mock_class:
+        mock_client = MagicMock()
+        mock_class.return_value = mock_client
+        mock_client.system_one.return_value = _mock_result({"comment_0": 0.44})
+
+        filter_items("key", [], comments)
+
+    out = capsys.readouterr().out
+    assert "When I login, I see my kids for pickup" in out
+    assert "you are ready to publish." in out
+
+
+def test_format_filtered_notes_dropped_count_alongside_kept_items():
+    comments = [{"task": "Task A", "project": "P", "comment": "Kept"}]
+    result = format_filtered([], comments, dropped_count=1)
+    assert "- **P** — Task A: Kept" in result
+    assert result.endswith("_(1 item filtered as noise)_")
+
+
+def test_format_filtered_uses_singular_for_one_dropped_item():
+    assert format_filtered([], [], dropped_count=1) == "_No notable Asana activity today_ (1 item filtered as noise)"
+
+
+def test_comment_question_carries_description_thread_and_log_owner_framing():
+    prior = [{"author": "teammate", "comment": "Draft is ready for review"}]
+    comments = [{"task": "Pickup article", "project": "Help Articles Updates", "comment": "Looks great, publish",
+                 "task_description": "Help article request form", "prior_comments": prior}]
+
+    with patch("asana_filter.TypeSafeClient") as mock_class:
+        mock_client = MagicMock()
+        mock_class.return_value = mock_client
+        mock_client.system_one.return_value = _mock_result({"comment_0": 0.9})
+
+        filter_items("key", [], comments)
+
+    q = mock_client.system_one.call_args.args[1]["comment_0"].instructions
+    assert q["item"]["task_description"] == "Help article request form"
+    assert q["item"]["prior_comments"] == prior
+    assert "log owner" in q["question"]
+    assert "approval" in q["question"]

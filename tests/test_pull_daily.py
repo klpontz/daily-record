@@ -197,3 +197,26 @@ def test_run_passes_directory_to_slack_format(tmp_path):
 
     # directory instance was passed as the third arg to slack_format
     assert mock_slack_format.call_args.args[2] is mock_dir.return_value
+
+
+def test_summary_line_splits_kept_and_filtered_asana_counts(tmp_path, capsys):
+    log_dir = tmp_path / "logs"
+    log_dir.mkdir()
+    template = tmp_path / "template.md"
+    template.write_text("### Slack\n-\n\n### Asana\n-\n")
+
+    config = {
+        "anthropic_api_key": "key", "slack_bot_token": "token", "slack_user_id": "U1",
+        "slack_channels": ["C1"], "asana_pat": "pat", "asana_workspace_gid": "WS1",
+        "typesafe_api_key": "ts-key",
+        "log_dir": str(log_dir), "template_path": str(template), "obsidian_vault_path": "",
+    }
+    comments = [{"task": f"T{i}", "project": None, "comment": "c"} for i in range(4)]
+
+    with patch("pull_daily.fetch_today_slack", side_effect=Exception("Slack down")):
+        with patch("pull_daily.fetch_today_asana", return_value={"completed_tasks": [], "comments": comments}):
+            with patch("pull_daily.filter_items", return_value=([], comments[:3])):
+                import pull_daily
+                pull_daily.run(config, dry_run=False)
+
+    assert "4 Asana items (3 kept, 1 filtered)" in capsys.readouterr().out

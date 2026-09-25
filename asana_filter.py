@@ -32,10 +32,20 @@ def filter_items(api_key: str, tasks: list[dict], comments: list[dict]) -> tuple
     for i, c in enumerate(comments):
         questions[f"comment_{i}"] = Noul(
             instructions={
-                "item": {"task": c["task"], "project": c.get("project"), "comment": c["comment"]},
+                "item": {
+                    "task": c["task"],
+                    "project": c.get("project"),
+                    "task_description": c.get("task_description", ""),
+                    "prior_comments": c.get("prior_comments", []),
+                    "comment": c["comment"],
+                },
                 "question": (
-                    "Is `item` a comment that captures a real decision or meaningful "
-                    "context — not a routine or content-free note?"
+                    "`item.comment` was written by the log owner on an Asana task. "
+                    "`item.prior_comments` are the thread leading up to it, and "
+                    "`item.task_description` is the original request. Does writing this "
+                    "comment reflect real work — a review, approval, decision, direction, "
+                    "or substantive answer — rather than a routine acknowledgment, "
+                    "self-assignment, or scheduling note?"
                 ),
             },
         )
@@ -57,7 +67,8 @@ def filter_items(api_key: str, tasks: list[dict], comments: list[dict]) -> tuple
         if score > NOISE_THRESHOLD:
             kept_comments.append(c)
         else:
-            print(f"dropped (noul={score:.2f}): {c['comment'][:60]}")
+            # Full comment plus task name, so a wrong drop can be found and judged.
+            print(f"dropped (noul={score:.2f}) [{c['task']}]: {' '.join(c['comment'].split())}")
 
     return kept_tasks, kept_comments
 
@@ -65,7 +76,7 @@ def filter_items(api_key: str, tasks: list[dict], comments: list[dict]) -> tuple
 def format_filtered(tasks: list[dict], comments: list[dict], dropped_count: int = 0) -> str:
     if not tasks and not comments:
         if dropped_count > 0:
-            return f"_No notable Asana activity today_ ({dropped_count} items filtered as noise)"
+            return f"_No notable Asana activity today_ ({_filtered_note(dropped_count)})"
         return "_No notable Asana activity today_"
 
     lines = []
@@ -77,7 +88,13 @@ def format_filtered(tasks: list[dict], comments: list[dict], dropped_count: int 
         project = c.get("project")
         prefix = f"**{project}** — " if project else ""
         lines.append(f"- {prefix}{c['task']}: {_clean_comment(c['comment'])}")
+    if dropped_count > 0:
+        lines.append(f"_({_filtered_note(dropped_count)})_")
     return "\n".join(lines)
+
+
+def _filtered_note(count: int) -> str:
+    return f"{count} item{'' if count == 1 else 's'} filtered as noise"
 
 
 def _clean_comment(text: str, max_len: int = 200) -> str:

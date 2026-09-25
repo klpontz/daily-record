@@ -22,7 +22,7 @@ Appends a section like this to `LOG_DIR/YYYY-MM-DD.md`:
 
 One bullet per *exchange*, not per message — a twelve-message thread about one problem is one bullet. That rule lives in `prompts/slack_summarize.md`, and getting it to hold was most of the work.
 
-Asana items are filtered differently: a [TypeSafe](https://docs.typesafe.ai) Jev Noul call judges which completed tasks and comments are substantive, and the survivors are formatted in plain code — no prompt, no generation, just a typed yes/no per item.
+Asana items are filtered differently: a [TypeSafe](https://docs.typesafe.ai) Jev Noul call judges which completed tasks and comments are substantive (each comment is judged alongside its task's description and the up-to-four thread comments before it), and the survivors are formatted in plain code — no prompt, no generation, just a typed yes/no per item.
 
 ## Requirements
 

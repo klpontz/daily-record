@@ -183,3 +183,81 @@ def test_format_for_prompt_handles_task_with_no_project():
 
 def test_format_for_prompt_empty_returns_no_activity():
     assert format_for_prompt({"completed_tasks": [], "comments": []}) == "No Asana activity today."
+
+
+def test_comments_warns_when_search_hits_result_cap(capsys):
+    # tasks/search returns at most 100 results and has no next page, so a
+    # full page means comments on the remaining tasks were never fetched.
+    today = "2026-04-10"
+    mapping = {
+        "users/me": {"data": {"gid": "U1"}},
+        "search": {"data": [{"gid": f"T{i}", "name": f"Task {i}"} for i in range(100)]},
+    }
+    with patch("asana_client._session", return_value=_fake_session(_dispatch(mapping))):
+        with patch("asana_client.date") as mock_date:
+            mock_date.today.return_value.isoformat.return_value = today
+            fetch_today_asana("pat", "WS1")
+    assert "100-task cap" in capsys.readouterr().out
+
+
+def test_comments_no_cap_warning_below_limit(capsys):
+    today = "2026-04-10"
+    mapping = {
+        "users/me": {"data": {"gid": "U1"}},
+        "search": {"data": [{"gid": f"T{i}", "name": f"Task {i}"} for i in range(99)]},
+    }
+    with patch("asana_client._session", return_value=_fake_session(_dispatch(mapping))):
+        with patch("asana_client.date") as mock_date:
+            mock_date.today.return_value.isoformat.return_value = today
+            fetch_today_asana("pat", "WS1")
+    assert "cap" not in capsys.readouterr().out
+
+
+def _comment_fetch(stories, notes="Request form text"):
+    today = "2026-04-10"
+    mapping = {
+        "users/me": {"data": {"gid": "U1"}},
+        "stories": {"data": stories},
+        "search": {"data": [{"gid": "T1", "name": "Some task", "notes": notes}]},
+    }
+    with patch("asana_client._session", return_value=_fake_session(_dispatch(mapping))):
+        with patch("asana_client.date") as mock_date:
+            mock_date.today.return_value.isoformat.return_value = today
+            return fetch_today_asana("pat", "WS1")["comments"]
+
+
+def _story(gid, text, day="2026-04-10", kind="comment"):
+    return {"type": kind, "created_by": {"gid": gid}, "created_at": f"{day}T10:00:00Z", "text": text}
+
+
+def test_comments_carry_task_description_clipped():
+    comments = _comment_fetch([_story("U1", "mine")], notes="x" * 900)
+    assert comments[0]["task_description"] == "x" * 800 + "…"
+
+
+def test_comments_carry_up_to_four_prior_thread_comments_labeled_by_author():
+    stories = [
+        _story("U2", "oldest", day="2026-04-01"),
+        _story("U2", "please review", day="2026-04-02"),
+        _story("U1", "on it", day="2026-04-03"),
+        _story("U2", "moved task", day="2026-04-04", kind="system"),
+        _story("U2", "draft is ready", day="2026-04-05"),
+        _story("U2", "any update?", day="2026-04-09"),
+        _story("U1", "looks great, publish"),
+        _story("U2", "later reply"),
+    ]
+    comments = _comment_fetch(stories)
+    assert [c["comment"] for c in comments] == ["looks great, publish"]
+    assert comments[0]["prior_comments"] == [
+        {"author": "teammate", "comment": "please review"},
+        {"author": "log owner", "comment": "on it"},
+        {"author": "teammate", "comment": "draft is ready"},
+        {"author": "teammate", "comment": "any update?"},
+    ]
+
+
+def test_prior_thread_comments_are_clipped_and_collapsed():
+    stories = [_story("U2", "line one\n\n" + "y" * 400, day="2026-04-09"), _story("U1", "mine")]
+    prior = _comment_fetch(stories)[0]["prior_comments"][0]["comment"]
+    assert prior.startswith("line one y")
+    assert len(prior) == 301 and prior.endswith("…")

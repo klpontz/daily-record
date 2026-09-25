@@ -85,6 +85,7 @@ def run(config: dict, dry_run: bool = False, debug: bool = False) -> dict:
     asana_ok = False
     slack_count = 0
     asana_count = 0
+    asana_kept = None
 
     # --- Slack ---
     # None = API unreachable (section skipped entirely)
@@ -129,7 +130,8 @@ def run(config: dict, dry_run: bool = False, debug: bool = False) -> dict:
                 asana_data["completed_tasks"],
                 asana_data["comments"],
             )
-            dropped_count = asana_count - len(kept_tasks) - len(kept_comments)
+            asana_kept = len(kept_tasks) + len(kept_comments)
+            dropped_count = asana_count - asana_kept
             asana_content = format_filtered(kept_tasks, kept_comments, dropped_count)
             asana_ok = True
         except Exception as e:
@@ -160,7 +162,8 @@ def run(config: dict, dry_run: bool = False, debug: bool = False) -> dict:
             print(content)
     else:
         write_log(log_path, config["template_path"], sections)
-        print(f"Pulled {slack_count} Slack items, {asana_count} Asana items → {log_path}")
+        asana_split = f" ({asana_kept} kept, {asana_count - asana_kept} filtered)" if asana_kept is not None else ""
+        print(f"Pulled {slack_count} Slack items, {asana_count} Asana items{asana_split} → {log_path}")
         _open_in_obsidian(config["obsidian_vault_path"], log_path)
 
     return {
