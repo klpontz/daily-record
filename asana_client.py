@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -65,9 +65,26 @@ def _get_my_gid(session, pat) -> str:
     return _get_json(session, f"{ASANA_BASE}/users/me", pat)["data"]["gid"]
 
 
-def _fetch_my_comments(session, pat, workspace_gid, today) -> list:
-    user_gid = _get_my_gid(session, pat)
-    params = {"modified_on.after": today, "opt_fields": "name,gid,notes,memberships.project.name", "limit": 100}
+def _fetch_created_tasks(session, pat, workspace_gid, today, user_gid) -> list:
+    # Local midnight, not UTC: tasks created in the evening still count as today.
+    since = datetime.fromisoformat(today).astimezone().isoformat()
+    params = {
+        "created_by.any": user_gid,
+        "created_at.after": since,
+        "opt_fields": "name,gid,parent,memberships.project.name",
+        "limit": 100,
+    }
+    data = _get_json(session, f"{ASANA_BASE}/workspaces/{workspace_gid}/tasks/search", pat, params)
+    return [dict(t, action="created") for t in data.get("data", []) if t.get("parent") is None]
+
+
+def _fetch_my_comments(session, pat, workspace_gid, today, user_gid) -> list:
+    params = {
+        "commented_on_by.any": user_gid,
+        "modified_on.after": today,
+        "opt_fields": "name,gid,notes,memberships.project.name",
+        "limit": 100,
+    }
     data = _get_json(session, f"{ASANA_BASE}/workspaces/{workspace_gid}/tasks/search", pat, params)
     tasks = data.get("data", [])
     if len(tasks) >= params["limit"]:
@@ -116,15 +133,24 @@ def _clip(text: str, max_len: int) -> str:
 def fetch_today_asana(pat, workspace_gid) -> dict:
     today = date.today().isoformat()
     session = _session()
+    user_gid = _get_my_gid(session, pat)
+    completed = _fetch_completed_tasks(session, pat, workspace_gid, today)
+    completed_gids = {t["gid"] for t in completed}
+    created = [
+        t for t in _fetch_created_tasks(session, pat, workspace_gid, today, user_gid)
+        if t["gid"] not in completed_gids  # created and finished today: list once, as completed
+    ]
     return {
-        "completed_tasks": _fetch_completed_tasks(session, pat, workspace_gid, today),
-        "comments": _fetch_my_comments(session, pat, workspace_gid, today),
+        "completed_tasks": completed,
+        "created_tasks": created,
+        "comments": _fetch_my_comments(session, pat, workspace_gid, today, user_gid),
     }
 
 
 def format_for_prompt(data: dict) -> str:
     """Format Asana data as a readable string for the Claude prompt."""
-    if not data["completed_tasks"] and not data["comments"]:
+    created = data.get("created_tasks", [])
+    if not data["completed_tasks"] and not created and not data["comments"]:
         return "No Asana activity today."
 
     lines = []
@@ -132,6 +158,13 @@ def format_for_prompt(data: dict) -> str:
     if data["completed_tasks"]:
         lines.append("## Completed Tasks")
         for task in data["completed_tasks"]:
+            project = project_name(task)
+            suffix = f" (project: {project})" if project else ""
+            lines.append(f"- {task['name']}{suffix}")
+
+    if created:
+        lines.append("## Created Tasks")
+        for task in created:
             project = project_name(task)
             suffix = f" (project: {project})" if project else ""
             lines.append(f"- {task['name']}{suffix}")

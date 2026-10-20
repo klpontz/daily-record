@@ -123,11 +123,12 @@ def run(config: dict, dry_run: bool = False, debug: bool = False) -> dict:
             config["asana_pat"],
             config["asana_workspace_gid"],
         )
-        asana_count = len(asana_data["completed_tasks"]) + len(asana_data["comments"])
+        tasks = asana_data["completed_tasks"] + asana_data.get("created_tasks", [])
+        asana_count = len(tasks) + len(asana_data["comments"])
         try:
             kept_tasks, kept_comments = filter_items(
                 config["typesafe_api_key"],
-                asana_data["completed_tasks"],
+                tasks,
                 asana_data["comments"],
             )
             asana_kept = len(kept_tasks) + len(kept_comments)

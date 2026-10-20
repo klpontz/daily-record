@@ -220,3 +220,30 @@ def test_summary_line_splits_kept_and_filtered_asana_counts(tmp_path, capsys):
                 pull_daily.run(config, dry_run=False)
 
     assert "4 Asana items (3 kept, 1 filtered)" in capsys.readouterr().out
+
+
+def test_created_tasks_are_counted_and_filtered(tmp_path, capsys):
+    log_dir = tmp_path / "logs"
+    log_dir.mkdir()
+    template = tmp_path / "template.md"
+    template.write_text("### Slack\n-\n\n### Asana\n-\n")
+
+    config = {
+        "anthropic_api_key": "key", "slack_bot_token": "token", "slack_user_id": "U1",
+        "slack_channels": ["C1"], "asana_pat": "pat", "asana_workspace_gid": "WS1",
+        "typesafe_api_key": "ts-key",
+        "log_dir": str(log_dir), "template_path": str(template), "obsidian_vault_path": "",
+    }
+    completed = [{"name": "Done", "gid": "T1"}]
+    created = [{"name": "Feature request", "gid": "T2", "action": "created"}]
+
+    with patch("pull_daily.fetch_today_slack", side_effect=Exception("Slack down")):
+        with patch("pull_daily.fetch_today_asana", return_value={
+            "completed_tasks": completed, "created_tasks": created, "comments": [],
+        }):
+            with patch("pull_daily.filter_items", return_value=(completed + created, [])) as mock_filter:
+                import pull_daily
+                pull_daily.run(config, dry_run=False)
+
+    assert mock_filter.call_args.args[1] == completed + created
+    assert "2 Asana items (2 kept, 0 filtered)" in capsys.readouterr().out

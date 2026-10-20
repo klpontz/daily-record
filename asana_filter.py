@@ -24,6 +24,10 @@ def filter_items(api_key: str, tasks: list[dict], comments: list[dict]) -> tuple
             instructions={
                 "item": {"name": t["name"], "project": project_name(t)},
                 "question": (
+                    "The log owner created `item` today. Is creating it substantive work "
+                    "worth surfacing in a career log — such as a feature request, bug report, "
+                    "or delegated project — rather than a trivially small to-do or routine admin note?"
+                    if t.get("action") == "created" else
                     "Is `item` substantive work worth surfacing in a career log "
                     "— not a trivially small task or routine admin note?"
                 ),
@@ -83,7 +87,8 @@ def format_filtered(tasks: list[dict], comments: list[dict], dropped_count: int 
     for t in tasks:
         project = project_name(t)
         prefix = f"**{project}** — " if project else ""
-        lines.append(f"- {prefix}{t['name']}: marked complete.")
+        label = "created" if t.get("action") == "created" else "marked complete"
+        lines.append(f"- {prefix}{t['name']}: {label}.")
     for c in comments:
         project = c.get("project")
         prefix = f"**{project}** — " if project else ""

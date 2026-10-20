@@ -153,3 +153,21 @@ def test_comment_question_carries_description_thread_and_log_owner_framing():
     assert q["item"]["prior_comments"] == prior
     assert "log owner" in q["question"]
     assert "approval" in q["question"]
+
+
+def test_created_task_gets_created_question_and_label():
+    tasks = [{"name": "Feature request", "gid": "T1", "action": "created"}]
+
+    with patch("asana_filter.TypeSafeClient") as mock_class:
+        mock_client = MagicMock()
+        mock_class.return_value = mock_client
+        mock_client.system_one.return_value = _mock_result({"task_0": 0.9})
+        kept_tasks, _ = filter_items("key", tasks, [])
+
+    question = mock_client.system_one.call_args.args[1]["task_0"].instructions["question"]
+    assert "created" in question
+    assert format_filtered(kept_tasks, []) == "- Feature request: created."
+
+
+def test_completed_task_label_unchanged():
+    assert format_filtered([{"name": "Done", "gid": "T1"}], []) == "- Done: marked complete."

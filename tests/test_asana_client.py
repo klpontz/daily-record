@@ -261,3 +261,79 @@ def test_prior_thread_comments_are_clipped_and_collapsed():
     prior = _comment_fetch(stories)[0]["prior_comments"][0]["comment"]
     assert prior.startswith("line one y")
     assert len(prior) == 301 and prior.endswith("…")
+
+
+# --- created tasks and scoped comment search ---
+
+def _search_router(created=None, commented=None, completed=None):
+    """Route the two tasks/search calls by their params, and record them."""
+    calls = []
+
+    def get(url, **kwargs):
+        assert "timeout" in kwargs, "session.get called without timeout"
+        params = kwargs.get("params") or {}
+        if "users/me" in url:
+            return _resp({"data": {"gid": "U1"}})
+        if "search" in url:
+            calls.append(params)
+            if "created_by.any" in params:
+                return _resp({"data": created or []})
+            return _resp({"data": commented or []})
+        if "stories" in url:
+            return _resp({"data": []})
+        if url.endswith("/tasks"):
+            return _resp({"data": completed or []})
+        return _resp({"data": []})
+
+    return get, calls
+
+
+def _fetch(get, today="2026-04-10"):
+    with patch("asana_client._session", return_value=_fake_session(get)):
+        with patch("asana_client.date") as mock_date:
+            mock_date.today.return_value.isoformat.return_value = today
+            return fetch_today_asana("pat", "WS1")
+
+
+def test_created_tasks_searched_by_me_since_local_midnight():
+    get, calls = _search_router(created=[{"gid": "T9", "name": "Feature request", "parent": None}])
+    result = _fetch(get)
+    created_call = next(c for c in calls if "created_by.any" in c)
+    assert created_call["created_by.any"] == "U1"
+    # Local midnight as an aware timestamp, so evening work isn't lost to UTC.
+    assert created_call["created_at.after"].startswith("2026-04-10T00:00:00")
+    assert created_call["created_at.after"][19:] != ""
+    assert [t["name"] for t in result["created_tasks"]] == ["Feature request"]
+
+
+def test_created_tasks_exclude_subtasks():
+    get, _ = _search_router(created=[
+        {"gid": "T1", "name": "Parent", "parent": None},
+        {"gid": "T2", "name": "Sub", "parent": {"gid": "T1"}},
+    ])
+    assert [t["name"] for t in _fetch(get)["created_tasks"]] == ["Parent"]
+
+
+def test_created_task_also_completed_today_listed_once_as_completed():
+    get, _ = _search_router(
+        created=[{"gid": "T1", "name": "Quick one", "parent": None}],
+        completed=[{"gid": "T1", "name": "Quick one", "completed": True, "parent": None}],
+    )
+    result = _fetch(get)
+    assert [t["name"] for t in result["completed_tasks"]] == ["Quick one"]
+    assert result["created_tasks"] == []
+
+
+def test_comment_search_scoped_to_tasks_i_commented_on():
+    get, calls = _search_router()
+    _fetch(get)
+    comment_call = next(c for c in calls if "created_by.any" not in c)
+    assert comment_call["commented_on_by.any"] == "U1"
+
+
+def test_format_for_prompt_includes_created_tasks():
+    data = {"completed_tasks": [], "comments": [],
+            "created_tasks": [{"name": "Student ID on instructor rosters", "gid": "T1"}]}
+    result = format_for_prompt(data)
+    assert "## Created Tasks" in result
+    assert "Student ID on instructor rosters" in result
