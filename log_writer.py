@@ -1,6 +1,8 @@
 import re
 from pathlib import Path
-from datetime import date
+from datetime import date, timedelta
+
+TOMORROW_PLACEHOLDER = "_For YYYY-MM-DD_"
 
 
 def get_log_path(log_dir: str, target_date: date = None) -> Path:
@@ -40,6 +42,19 @@ def overwrite_section(text: str, section_name: str, new_content: str) -> str:
     return text.rstrip('\n') + f'\n\n### {section_name}\n{new_content}\n'
 
 
+def next_workday(day: date) -> date:
+    """Return the next Monday-to-Friday date after day. Holidays are not skipped."""
+    nxt = day + timedelta(days=1)
+    while nxt.weekday() >= 5:
+        nxt += timedelta(days=1)
+    return nxt
+
+
+def fill_tomorrow_date(text: str, log_date: date) -> str:
+    """Replace the Tomorrow placeholder with the next workday. Edited lines stay as they are."""
+    return text.replace(TOMORROW_PLACEHOLDER, f"_For {next_workday(log_date).isoformat()}_")
+
+
 def write_log(log_path: Path, template_path: str, sections: dict) -> None:
     """Write sections to log file.
 
@@ -58,5 +73,12 @@ def write_log(log_path: Path, template_path: str, sections: dict) -> None:
 
     for section_name, content in sections.items():
         text = overwrite_section(text, section_name, content)
+
+    try:
+        log_date = date.fromisoformat(log_path.stem)
+    except ValueError:
+        log_date = None
+    if log_date is not None:
+        text = fill_tomorrow_date(text, log_date)
 
     log_path.write_text(text)

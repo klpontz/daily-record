@@ -125,3 +125,51 @@ def test_read_section_handles_zero_content_section_without_bleeding_into_next():
 
 def test_read_section_missing_returns_empty_string():
     assert read_section("### Plan\n- a\n", "Done") == ""
+
+
+# --- Tomorrow date prefill ---
+
+from log_writer import next_workday, fill_tomorrow_date
+
+TEMPLATE_WITH_PLACEHOLDER = "### Tomorrow\n_For YYYY-MM-DD_\n- [ ] \n"
+
+
+def test_next_workday_weekday_is_next_day():
+    assert next_workday(date(2026, 9, 30)) == date(2026, 10, 1)  # Wed -> Thu
+
+
+def test_next_workday_friday_skips_to_monday():
+    assert next_workday(date(2026, 10, 2)) == date(2026, 10, 5)
+
+
+def test_next_workday_saturday_skips_to_monday():
+    assert next_workday(date(2026, 10, 3)) == date(2026, 10, 5)
+
+
+def test_fill_tomorrow_date_replaces_placeholder():
+    result = fill_tomorrow_date(TEMPLATE_WITH_PLACEHOLDER, date(2026, 10, 2))
+    assert "_For 2026-10-05_" in result
+    assert "YYYY-MM-DD" not in result
+
+
+def test_fill_tomorrow_date_leaves_edited_line_alone():
+    text = "### Tomorrow\n_For 2026-10-09_\n"
+    assert fill_tomorrow_date(text, date(2026, 10, 2)) == text
+
+
+def test_write_log_new_file_fills_date_from_log_name(tmp_path):
+    template = tmp_path / "template.md"
+    template.write_text(TEMPLATE_WITH_PLACEHOLDER + "\n### Slack\n- \n")
+    log_path = tmp_path / "2026-10-02.md"
+    write_log(log_path, str(template), {"Slack": "- hi"})
+    assert "_For 2026-10-05_" in log_path.read_text()
+
+
+def test_write_log_existing_file_fills_placeholder(tmp_path):
+    # Obsidian creates the file from the raw template before pull-daily runs
+    template = tmp_path / "template.md"
+    template.write_text("unused")
+    log_path = tmp_path / "2026-09-30.md"
+    log_path.write_text(TEMPLATE_WITH_PLACEHOLDER + "\n### Slack\n- \n")
+    write_log(log_path, str(template), {"Slack": "- hi"})
+    assert "_For 2026-10-01_" in log_path.read_text()
