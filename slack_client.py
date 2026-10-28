@@ -1,3 +1,4 @@
+import re
 import ssl
 from datetime import date, datetime, timezone
 from http.client import IncompleteRead
@@ -80,14 +81,14 @@ def _fetch_channel_messages(client: WebClient, channel_id: str, user_id: str, ol
                 parent = thread[0] if thread else {"user_id": msg.get("user", ""), "text": msg.get("text", "")}
                 replies = thread[1:] if thread else []
                 # is_mine retained for future consumers; the attributed formatter keys on names, not this flag
-                results.append({"channel_id": channel_id, "parent": parent, "replies": replies, "is_mine": True})
+                results.append({"channel_id": channel_id, "ts": msg_ts, "parent": parent, "replies": replies, "is_mine": True})
             elif has_thread_activity_today:
                 thread = _fetch_thread(client, channel_id, msg_ts, oldest)
                 if not thread:
                     continue
                 parent, replies = thread[0], thread[1:]
                 if user_started or any(r["user_id"] == user_id for r in replies):
-                    results.append({"channel_id": channel_id, "parent": parent, "replies": replies, "is_mine": user_started})
+                    results.append({"channel_id": channel_id, "ts": msg_ts, "parent": parent, "replies": replies, "is_mine": user_started})
     except SlackApiError as e:
         print(f"⚠ Slack API error fetching channel {channel_id}: {e}")
     # conversations_history is newest-first; present threads oldest-first
@@ -104,7 +105,7 @@ def _fetch_dm_messages(client: WebClient, user_id: str, oldest: str) -> list:
                 history = client.conversations_history(channel=dm["id"], oldest=oldest, limit=100)
                 ordered = list(reversed(history.get("messages", [])))  # newest-first -> chronological
                 if any(m.get("user") == user_id for m in ordered):
-                    messages = [{"user_id": m.get("user", ""), "text": m.get("text", "")} for m in ordered]
+                    messages = [{"user_id": m.get("user", ""), "text": m.get("text", ""), "ts": m.get("ts", "")} for m in ordered]
                     results.append({"channel_id": dm["id"], "partner_id": dm.get("user", ""), "messages": messages})
             except SlackApiError as e:
                 if e.response.get("error") == "missing_scope":
@@ -122,12 +123,14 @@ def fetch_today_slack(token: str, user_id: str, channel_ids: list, debug: bool =
 
     Returns:
         {
-            "channels": [{"channel_id": str, "parent": {"user_id": str, "text": str}, "replies": [{"user_id": str, "text": str}, ...], "is_mine": bool}, ...],
-            "dms": [{"channel_id": str, "partner_id": str, "messages": [{"user_id": str, "text": str}, ...]}, ...]
+            "workspace_url": str | None,
+            "channels": [{"channel_id": str, "ts": str, "parent": {"user_id": str, "text": str}, "replies": [{"user_id": str, "text": str}, ...], "is_mine": bool}, ...],
+            "dms": [{"channel_id": str, "partner_id": str, "messages": [{"user_id": str, "text": str, "ts": str}, ...]}, ...]
         }
     """
     client = build_web_client(token)
     oldest = _today_oldest_ts()
+    workspace_url = _workspace_url(client)
 
     if debug:
         from datetime import datetime as _dt
@@ -175,7 +178,45 @@ def fetch_today_slack(token: str, user_id: str, channel_ids: list, debug: bool =
         channels.extend(_fetch_channel_messages(client, channel_id, user_id, oldest))
 
     dms = _fetch_dm_messages(client, user_id, oldest)
-    return {"channels": channels, "dms": dms}
+    return {"workspace_url": workspace_url, "channels": channels, "dms": dms}
+
+
+def _workspace_url(client) -> str | None:
+    """Workspace base URL (e.g. https://acme.slack.com/) for permalinks, or None.
+    A missing URL only costs the links, never the pull."""
+    try:
+        url = client.auth_test().get("url")
+    except SlackApiError:
+        return None
+    return url if isinstance(url, str) and url else None
+
+
+def permalink(workspace_url: str, channel_id: str, ts: str) -> str:
+    """Slack archive link for a message: /archives/<channel>/p<ts without the dot>."""
+    return f"{workspace_url.rstrip('/')}/archives/{channel_id}/p{ts.replace('.', '')}"
+
+
+def _link(data, channel_id, ts):
+    base = data.get("workspace_url")
+    return permalink(base, channel_id, ts) if base and ts else None
+
+
+def slack_permalinks(data) -> set:
+    """Every link format_for_prompt offers the summarizer."""
+    links = {_link(data, item["channel_id"], item.get("ts")) for item in data["channels"]}
+    for dm in data["dms"]:
+        links.update(_link(data, dm["channel_id"], m.get("ts")) for m in dm["messages"])
+    links.discard(None)
+    return links
+
+
+_LINK_RE = re.compile(r" ?\(\[link\]\((?P<url>[^)\s]+)\)\)")
+
+
+def strip_unknown_links(summary: str, allowed: set) -> str:
+    """Drop any ([link](URL)) the summarizer did not get from the input.
+    A wrong link is worse than none: it sends the reader to the wrong thread."""
+    return _LINK_RE.sub(lambda m: m.group(0) if m.group("url") in allowed else "", summary)
 
 
 def format_for_prompt(data, channel_names=None, directory=None):
@@ -209,7 +250,9 @@ def format_for_prompt(data, channel_names=None, directory=None):
         for item in data["channels"]:
             label = _channel_label(item["channel_id"])
             p = item["parent"]
-            lines.append(f"[{label}] {who(p['user_id'])}: {p['text']}")
+            link = _link(data, item["channel_id"], item.get("ts"))
+            link_part = f" (link: {link})" if link else ""
+            lines.append(f"[{label}]{link_part} {who(p['user_id'])}: {p['text']}")
             for r in item["replies"]:
                 lines.append(f"  {who(r['user_id'])}: {r['text']}")
 
@@ -218,6 +261,8 @@ def format_for_prompt(data, channel_names=None, directory=None):
         for dm in data["dms"]:
             lines.append(f"[DM with {who(dm.get('partner_id', ''))}]")
             for m in dm["messages"]:
-                lines.append(f"  {who(m['user_id'])}: {m['text']}")
+                link = _link(data, dm["channel_id"], m.get("ts"))
+                link_part = f" (link: {link})" if link else ""
+                lines.append(f"  {who(m['user_id'])}: {m['text']}{link_part}")
 
     return "\n".join(lines)

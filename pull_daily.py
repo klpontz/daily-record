@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 from asana_client import fetch_today_asana
 from asana_filter import filter_items, format_filtered
 from log_writer import get_log_path, write_log
-from slack_client import fetch_today_slack, format_for_prompt as slack_format, build_web_client
+from slack_client import fetch_today_slack, format_for_prompt as slack_format, build_web_client, slack_permalinks, strip_unknown_links
 from user_directory import SlackUserDirectory
 from summarizer import summarize
 
@@ -104,10 +104,13 @@ def run(config: dict, dry_run: bool = False, debug: bool = False) -> dict:
         directory = SlackUserDirectory(build_web_client(config["slack_bot_token"]), config["slack_user_id"])
         raw = slack_format(slack_data, config.get("slack_channel_names"), directory)
         try:
-            slack_content = summarize(
-                config["anthropic_api_key"],
-                str(_prompts_dir() / "slack_summarize.md"),
-                raw,
+            slack_content = strip_unknown_links(
+                summarize(
+                    config["anthropic_api_key"],
+                    str(_prompts_dir() / "slack_summarize.md"),
+                    raw,
+                ),
+                slack_permalinks(slack_data),
             )
             slack_ok = True
         except Exception as e:

@@ -247,3 +247,38 @@ def test_created_tasks_are_counted_and_filtered(tmp_path, capsys):
 
     assert mock_filter.call_args.args[1] == completed + created
     assert "2 Asana items (2 kept, 0 filtered)" in capsys.readouterr().out
+
+
+def test_slack_summary_drops_links_not_offered_to_the_model(tmp_path):
+    log_dir = tmp_path / "logs"
+    log_dir.mkdir()
+    template = tmp_path / "template.md"
+    template.write_text("### Slack\n-\n\n### Asana\n-\n")
+    config = {
+        "anthropic_api_key": "key", "slack_bot_token": "token", "slack_user_id": "U1",
+        "slack_channels": ["C1"], "asana_pat": "pat", "asana_workspace_gid": "WS1",
+        "typesafe_api_key": "ts-key",
+        "log_dir": str(log_dir), "template_path": str(template), "obsidian_vault_path": "",
+    }
+    slack_data = {
+        "workspace_url": "https://acme.slack.com/",
+        "channels": [{"channel_id": "C1", "ts": "1000.0",
+                      "parent": {"user_id": "U2", "text": "hi"}, "replies": [], "is_mine": False}],
+        "dms": [],
+    }
+    good = "https://acme.slack.com/archives/C1/p10000"
+    summary = f"- #a: real. ([link]({good}))\n- #a: fake. ([link](https://acme.slack.com/archives/C1/p1))"
+
+    with patch("pull_daily.fetch_today_slack", return_value=slack_data):
+        with patch("pull_daily.SlackUserDirectory"), patch("pull_daily.build_web_client"):
+            with patch("pull_daily.fetch_today_asana", return_value={"completed_tasks": [], "comments": []}):
+                with patch("pull_daily.filter_items", return_value=([], [])):
+                    with patch("pull_daily.summarize", return_value=summary):
+                        import pull_daily
+                        pull_daily.run(config, dry_run=False)
+
+    from datetime import date
+    content = (log_dir / f"{date.today().isoformat()}.md").read_text()
+    assert f"([link]({good}))" in content
+    assert "/p1)" not in content
+    assert "- #a: fake." in content
