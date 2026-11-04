@@ -210,6 +210,7 @@ def slack_permalinks(data) -> set:
     return links
 
 
+_MENTION_RE = re.compile(r"<@(?P<uid>[UW][A-Z0-9]+)(?:\|[^>]*)?>")
 _LINK_RE = re.compile(r" ?\(\[link\]\((?P<url>[^)\s]+)\)\)")
 
 
@@ -235,10 +236,20 @@ def format_for_prompt(data, channel_names=None, directory=None):
         ids.update(m["user_id"] for m in dm["messages"])
     ids.discard("")
 
+    texts = [item["parent"]["text"] for item in data["channels"]]
+    texts += [r["text"] for item in data["channels"] for r in item["replies"]]
+    texts += [m["text"] for dm in data["dms"] for m in dm["messages"]]
+    for text in texts:
+        ids.update(m.group("uid") for m in _MENTION_RE.finditer(text or ""))
+
     resolved = directory.resolve_many(ids) if directory else {}
 
     def who(uid):
         return resolved.get(uid, uid or "unknown")
+
+    def clean(text):
+        """Replace <@U123> (or <@U123|handle>) with @Name so the summarizer never sees a raw ID."""
+        return _MENTION_RE.sub(lambda m: "@" + who(m.group("uid")), text or "")
 
     def _channel_label(channel_id):
         name = names.get(channel_id, channel_id)
@@ -252,9 +263,9 @@ def format_for_prompt(data, channel_names=None, directory=None):
             p = item["parent"]
             link = _link(data, item["channel_id"], item.get("ts"))
             link_part = f" (link: {link})" if link else ""
-            lines.append(f"[{label}]{link_part} {who(p['user_id'])}: {p['text']}")
+            lines.append(f"[{label}]{link_part} {who(p['user_id'])}: {clean(p['text'])}")
             for r in item["replies"]:
-                lines.append(f"  {who(r['user_id'])}: {r['text']}")
+                lines.append(f"  {who(r['user_id'])}: {clean(r['text'])}")
 
     if data["dms"]:
         lines.append("## Direct Messages")
@@ -263,6 +274,6 @@ def format_for_prompt(data, channel_names=None, directory=None):
             for m in dm["messages"]:
                 link = _link(data, dm["channel_id"], m.get("ts"))
                 link_part = f" (link: {link})" if link else ""
-                lines.append(f"  {who(m['user_id'])}: {m['text']}{link_part}")
+                lines.append(f"  {who(m['user_id'])}: {clean(m['text'])}{link_part}")
 
     return "\n".join(lines)

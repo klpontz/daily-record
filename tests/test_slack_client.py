@@ -427,3 +427,43 @@ def test_strip_unknown_links_keeps_offered_and_drops_invented():
     assert f"([link]({good}))" in out
     assert "p99999" not in out
     assert out.splitlines()[1] == "- #training: C asked D."
+
+
+def test_format_resolves_mentions_inside_message_text():
+    names = {"U123": "You", "U999": "the CEO", "U555": "a teammate", "U556": "another teammate"}
+    directory = MagicMock()
+    directory.resolve_many.side_effect = lambda ids: {i: names.get(i, i) for i in ids}
+    data = {
+        "channels": [{
+            "channel_id": "C001",
+            "parent": {"user_id": "U999", "text": "<@U555> can you confirm with <@U556|old-handle>?"},
+            "replies": [{"user_id": "U123", "text": "thanks <@U555>"}],
+            "is_mine": False,
+        }],
+        "dms": [{
+            "channel_id": "D001",
+            "partner_id": "U555",
+            "messages": [{"user_id": "U555", "text": "ping <@U999>"}],
+        }],
+    }
+    result = format_for_prompt(data, channel_names={"C001": "training"}, directory=directory)
+    assert "@a teammate can you confirm with @another teammate?" in result
+    assert "thanks @a teammate" in result
+    assert "ping @the CEO" in result
+    assert "<@" not in result
+    asked = directory.resolve_many.call_args[0][0]
+    assert {"U555", "U556", "U999"} <= set(asked)
+
+
+def test_format_leaves_unknown_mentions_readable_without_directory():
+    data = {
+        "channels": [{
+            "channel_id": "C001",
+            "parent": {"user_id": "U999", "text": "hi <@U555>"},
+            "replies": [],
+            "is_mine": False,
+        }],
+        "dms": [],
+    }
+    result = format_for_prompt(data, channel_names={"C001": "training"})
+    assert "hi @U555" in result
