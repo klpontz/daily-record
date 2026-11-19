@@ -12,7 +12,7 @@ from urllib.parse import quote
 from dotenv import load_dotenv
 
 from asana_client import fetch_today_asana
-from asana_filter import filter_items, format_filtered
+from asana_format import format_items
 from log_writer import get_log_path, write_log
 from slack_client import fetch_today_slack, format_for_prompt as slack_format, build_web_client, slack_permalinks, strip_unknown_links
 from user_directory import SlackUserDirectory
@@ -27,7 +27,6 @@ REQUIRED_KEYS = [
     "SLACK_CHANNELS",
     "SLACK_USER_ID",
     "TEMPLATE_PATH",
-    "TYPESAFE_API_KEY",
 ]
 
 
@@ -50,7 +49,6 @@ def load_config() -> dict:
         "asana_workspace_gid": os.environ["ASANA_WORKSPACE_GID"],
         "log_dir": os.environ["LOG_DIR"],
         "template_path": os.environ["TEMPLATE_PATH"],
-        "typesafe_api_key": os.environ["TYPESAFE_API_KEY"],
         "obsidian_vault_path": os.environ.get("OBSIDIAN_VAULT_PATH", ""),
     }
 
@@ -85,7 +83,6 @@ def run(config: dict, dry_run: bool = False, debug: bool = False) -> dict:
     asana_ok = False
     slack_count = 0
     asana_count = 0
-    asana_kept = None
 
     # --- Slack ---
     # None = API unreachable (section skipped entirely)
@@ -128,19 +125,8 @@ def run(config: dict, dry_run: bool = False, debug: bool = False) -> dict:
         )
         tasks = asana_data["completed_tasks"] + asana_data.get("created_tasks", [])
         asana_count = len(tasks) + len(asana_data["comments"])
-        try:
-            kept_tasks, kept_comments = filter_items(
-                config["typesafe_api_key"],
-                tasks,
-                asana_data["comments"],
-            )
-            asana_kept = len(kept_tasks) + len(kept_comments)
-            dropped_count = asana_count - asana_kept
-            asana_content = format_filtered(kept_tasks, kept_comments, dropped_count)
-            asana_ok = True
-        except Exception as e:
-            print(f"⚠ Asana filtering failed: {e}")
-            asana_content = "_Filtering failed — run manually_"
+        asana_content = format_items(tasks, asana_data["comments"])
+        asana_ok = True
     except Exception as e:
         print(f"⚠ Asana pull failed: {e}")
         # asana_content stays None — section will be skipped entirely
@@ -166,8 +152,7 @@ def run(config: dict, dry_run: bool = False, debug: bool = False) -> dict:
             print(content)
     else:
         write_log(log_path, config["template_path"], sections)
-        asana_split = f" ({asana_kept} kept, {asana_count - asana_kept} filtered)" if asana_kept is not None else ""
-        print(f"Pulled {slack_count} Slack items, {asana_count} Asana items{asana_split} → {log_path}")
+        print(f"Pulled {slack_count} Slack items, {asana_count} Asana items → {log_path}")
         _open_in_obsidian(config["obsidian_vault_path"], log_path)
 
     return {

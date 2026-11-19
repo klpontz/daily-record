@@ -22,11 +22,11 @@ Appends a section like this to `LOG_DIR/YYYY-MM-DD.md`:
 
 One bullet per *exchange*, not per message — a twelve-message thread about one problem is one bullet. That rule lives in `prompts/slack_summarize.md`, and getting it to hold was most of the work.
 
-Asana items are filtered differently: a [TypeSafe](https://docs.typesafe.ai) Jev Noul call judges which completed tasks and comments are substantive (each comment is judged alongside its task's description and the up-to-four thread comments before it), and the survivors are formatted in plain code — no prompt, no generation, just a typed yes/no per item.
+Asana items are not summarized or filtered. Every completed or created task and every comment you wrote today becomes one bullet, formatted in plain code. The daily review decides what matters. A Jev noise filter used to sit here. It was removed on 2026-11-19 because it kept dropping real work, such as published help articles and feature requests.
 
 ## Requirements
 
-Python 3.9+. An Anthropic API key, a Slack bot token, an Asana personal access token, and a TypeSafe API key.
+Python 3.9+. An Anthropic API key, a Slack bot token, and an Asana personal access token. A TypeSafe API key is needed only for `classify_log.py` and `carry_forward.py`.
 
 ## Setup
 
@@ -82,7 +82,7 @@ The bot only reads channels you add it to.
 
 ## TypeSafe setup
 
-Create an account and API key at [console.typesafe.ai](https://console.typesafe.ai) → `TYPESAFE_API_KEY`. Used for Asana filtering here, and by `classify_log.py` and `carry_forward.py` below.
+Create an account and API key at [console.typesafe.ai](https://console.typesafe.ai) → `TYPESAFE_API_KEY`. Used only by `classify_log.py` and `carry_forward.py` below. `pull_daily.py` does not need it.
 
 ## Config
 
@@ -97,7 +97,7 @@ All settings live in `.env` (copy from `.env.example`):
 | `SLACK_CHANNEL_NAMES` | Optional `id:name` pairs, for readable labels |
 | `ASANA_PAT` | Asana personal access token |
 | `ASANA_WORKSPACE_GID` | Asana workspace GID |
-| `TYPESAFE_API_KEY` | TypeSafe API key, from console.typesafe.ai |
+| `TYPESAFE_API_KEY` | TypeSafe API key, from console.typesafe.ai. Only for `classify_log.py` and `carry_forward.py` |
 | `LOG_DIR` | Directory where daily log files live |
 | `TEMPLATE_PATH` | Path to the daily note template |
 | `OBSIDIAN_VAULT_PATH` | Vault root — optional, opens the log after a pull |
@@ -105,7 +105,7 @@ All settings live in `.env` (copy from `.env.example`):
 
 ## Prompts
 
-`prompts/slack_summarize.md` controls what gets extracted from Slack. Edit it to tune the output without touching code. The names in its example block are placeholders. Asana has no prompt to tune — see `asana_filter.py` for its Noul instructions instead.
+`prompts/slack_summarize.md` controls what gets extracted from Slack. Edit it to tune the output without touching code. The names in its example block are placeholders. Asana has no prompt. `asana_format.py` writes each item as a bullet.
 
 ## Classifying a day's Breakdown
 
@@ -142,7 +142,7 @@ and run it in date order.
 python3 -m pytest
 ```
 
-136 tests, no network calls — the Slack, Asana, Anthropic, and TypeSafe clients are all stubbed.
+167 tests, no network calls — the Slack, Asana, Anthropic, and TypeSafe clients are all stubbed.
 
 ## Scheduling
 
